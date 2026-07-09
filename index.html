@@ -737,12 +737,12 @@ async function connectFirebase(config){
 async function refreshDeckPool(deckId){
   const pool = await CloudStore.getAll('decks/' + deckId + '/pool');
   const d = decks.find(x => x.deckId === deckId);
-  if(d){ d.pool = pool; renderDeckSelect(); renderPackShop(); }
+  if(d){ d.pool = pool; renderDecks(); renderDeckSelect(); renderPackShop(); }
 }
 async function refreshDeckMembers(deckId){
   const members = await CloudStore.getAll('decks/' + deckId + '/members');
   const d = decks.find(x => x.deckId === deckId);
-  if(d){ d.members = members; }
+  if(d){ d.members = members; renderDecks(); }
 }
 function parseFirebaseConfig(text){
   let cleaned = text.trim();
