@@ -654,14 +654,18 @@ async function connectFirebase(config){
         renderTasks(); renderLists(); renderGallery(); renderWallet();
         if(deckWatchUnsub) deckWatchUnsub();
         deckWatchUnsub = CloudStore.watch('decks', liveDecks => {
-          // deck docs from Firestore don't carry pool inline (pool is a subcollection) —
-          // keep any already-fetched pool array around across live updates
+          // deck docs from Firestore don't carry pool or members inline (both are subcollections
+          // now, since member photos alone can exceed Firestore's 1MB per-document limit) —
+          // keep any already-fetched pool/members arrays around across live updates
           decks = liveDecks.map(d => {
             const existing = decks.find(x => x.deckId === d.deckId);
-            return Object.assign({ pool: existing ? existing.pool : [] }, d);
+            return Object.assign({ pool: existing ? existing.pool : [], members: existing ? existing.members : [] }, d);
           });
           renderDecks(); renderDeckSelect(); renderCollFilter();
-          decks.forEach(d => { if(!d.pool || d.pool.length === 0) refreshDeckPool(d.deckId); });
+          decks.forEach(d => {
+            if(!d.pool || d.pool.length === 0) refreshDeckPool(d.deckId);
+            if(!d.members || d.members.length === 0) refreshDeckMembers(d.deckId);
+          });
         });
       }
     });
@@ -674,6 +678,11 @@ async function refreshDeckPool(deckId){
   const pool = await CloudStore.getAll('decks/' + deckId + '/pool');
   const d = decks.find(x => x.deckId === deckId);
   if(d){ d.pool = pool; renderDeckSelect(); renderPackShop(); }
+}
+async function refreshDeckMembers(deckId){
+  const members = await CloudStore.getAll('decks/' + deckId + '/members');
+  const d = decks.find(x => x.deckId === deckId);
+  if(d){ d.members = members; }
 }
 function parseFirebaseConfig(text){
   let cleaned = text.trim();
@@ -949,15 +958,22 @@ $('importDeckFile').addEventListener('change', async e => {
   decks = decks.filter(d => d.deckId !== deck.deckId);
   decks.push(deck);
   if(cloudActive){
-    // pool goes in its own subcollection so the deck doc never approaches Firestore's 1MB limit
+    // both members and pool go in their own subcollections so the deck doc never
+    // approaches Firestore's 1MB limit, regardless of how many member photos exist
     $('deckImportStatus').textContent = 'Publishing to cloud...';
-    const { pool, ...deckMeta } = deck;
+    const { pool, members, ...deckMeta } = deck;
     await CloudStore.put('decks', deckMeta);
     let done = 0;
+    for(const m of members){
+      await CloudStore.put('decks/' + deck.deckId + '/members', m);
+      done++;
+      if(done % 10 === 0) $('deckImportStatus').textContent = 'Publishing members... ' + done + ' / ' + members.length;
+    }
+    done = 0;
     for(const entry of pool){
       await CloudStore.put('decks/' + deck.deckId + '/pool', entry);
       done++;
-      if(done % 50 === 0) $('deckImportStatus').textContent = 'Publishing to cloud... ' + done + ' / ' + pool.length;
+      if(done % 50 === 0) $('deckImportStatus').textContent = 'Publishing pool... ' + done + ' / ' + pool.length;
     }
   } else {
     await idbPutLocal('decks', deck);
