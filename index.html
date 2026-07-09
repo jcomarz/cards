@@ -305,6 +305,7 @@
   <div class="wallet"><span class="coin">🪙</span>RP <b id="rpBalance">0</b>
     <button class="secondary small" id="addRpBtn" type="button">+1000 RP (test)</button>
   </div>
+  <button class="secondary small" id="sfxToggleBtn" type="button">🔊 Sound</button>
   <button class="secondary small" id="exportBtn" type="button">Export collection</button>
   <button class="secondary small" id="importBtn" type="button">Import collection</button>
   <input type="file" id="importFile" accept="application/json" style="display:none;">
@@ -429,9 +430,13 @@
 <div class="panel">
   <h2><span class="ic">💿</span>Decks <span class="count-pill" id="deckCount">0 imported</span></h2>
   <div class="status">Each deck is a separate artist/group, built with the Deck Builder app. Import as many as you want — they never mix pools with each other.</div>
-  <button id="importDeckBtn" type="button">Import deck file</button>
+  <div class="row">
+    <button id="importDeckBtn" type="button">Import deck file</button>
+    <button class="secondary" id="browseCloudDecksBtn" type="button" style="display:none;">☁️ Browse Firebase decks</button>
+  </div>
   <input type="file" id="importDeckFile" accept="application/json" style="display:none;">
   <div class="status" id="deckImportStatus"></div>
+  <div id="cloudDeckBrowser" style="display:none;margin-top:12px;"></div>
   <div id="deckList" style="margin-top:12px;"></div>
 </div>
 
@@ -571,6 +576,65 @@ window.CloudStore = (function () {
   return { init, onAuthChange, signInWithGoogle, signInAnonymously, signOut, uid, userLabel, getAll, put, del, clearCollection, getMeta, setMeta, watch, watchDoc };
 })();
 
+// ---------------- SFX (synthesized, no audio files — pure Web Audio oscillators) ----------------
+const SFX = (function(){
+  let ctx = null;
+  let enabled = localStorage.getItem('cf_sfx_enabled') !== '0';
+  function getCtx(){
+    if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if(ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  function tone(freq, start, dur, type, vol){
+    if(!enabled) return;
+    type = type || 'sine'; vol = vol === undefined ? 0.18 : vol;
+    try{
+      const c = getCtx();
+      const osc = c.createOscillator(), gain = c.createGain();
+      osc.type = type; osc.frequency.value = freq;
+      const t0 = c.currentTime + start;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain); gain.connect(c.destination);
+      osc.start(t0); osc.stop(t0 + dur + 0.03);
+    }catch(e){}
+  }
+  function sweep(f0, f1, dur, vol){
+    if(!enabled) return;
+    try{
+      const c = getCtx();
+      const osc = c.createOscillator(), gain = c.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f0, c.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(f1, c.currentTime + dur);
+      gain.gain.setValueAtTime(0.0001, c.currentTime);
+      gain.gain.linearRampToValueAtTime(vol||0.13, c.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
+      osc.connect(gain); gain.connect(c.destination);
+      osc.start(); osc.stop(c.currentTime + dur + 0.03);
+    }catch(e){}
+  }
+  return {
+    setEnabled(v){ enabled = v; localStorage.setItem('cf_sfx_enabled', v ? '1' : '0'); },
+    isEnabled(){ return enabled; },
+    taskComplete(){ tone(660,0,0.11,'sine',0.16); tone(880,0.09,0.16,'sine',0.16); },
+    questBonus(){ tone(523,0,0.09,'sine',0.18); tone(659,0.08,0.09,'sine',0.18); tone(784,0.16,0.24,'sine',0.22); },
+    packBuy(){ tone(320,0,0.05,'square',0.1); tone(220,0.05,0.09,'square',0.09); },
+    packOpenWhoosh(){ sweep(150,900,0.4,0.14); },
+    cardFlip(grade){
+      const freqs = {C:392,B:440,A:523,S:659,R:880};
+      const f = freqs[grade] || 392;
+      const big = grade === 'S' || grade === 'R';
+      tone(f, 0, big?0.22:0.1, 'triangle', big?0.26:0.14);
+      if(big) tone(f*1.5, 0.07, 0.28, 'triangle', 0.2);
+    },
+    powerupSuccess(){ tone(523,0,0.08,'sine',0.18); tone(659,0.07,0.08,'sine',0.18); tone(784,0.14,0.08,'sine',0.18); tone(1047,0.21,0.22,'sine',0.22); },
+    powerupFail(){ tone(300,0,0.16,'sawtooth',0.14); tone(220,0.13,0.26,'sawtooth',0.14); },
+    upgradeSuccess(){ tone(392,0,0.09,'sine',0.18); tone(523,0.08,0.09,'sine',0.18); tone(659,0.16,0.09,'sine',0.18); tone(784,0.24,0.09,'sine',0.18); tone(1047,0.32,0.3,'sine',0.24); }
+  };
+})();
+
 const $ = id => document.getElementById(id);
 const GRADES = ['C','B','A','S','R'];
 const GRADE_COLOR = {C:'#8a93ad',B:'#5fae6f',A:'#5b9bf0',S:'#b26cf0',R:'#f5c451'};
@@ -676,6 +740,9 @@ let rp = 0;
 const DIFFICULTY_RP = {easy:50, medium:150, hard:400, epic:1000};
 
 window.CardForge = { addRP: async (amount) => { rp += amount; await setMeta('rp', rp); renderWallet(); } };
+function updateSfxBtn(){ $('sfxToggleBtn').textContent = SFX.isEnabled() ? '🔊 Sound' : '🔇 Muted'; }
+$('sfxToggleBtn').addEventListener('click', () => { SFX.setEnabled(!SFX.isEnabled()); updateSfxBtn(); if(SFX.isEnabled()) SFX.taskComplete(); });
+updateSfxBtn();
 
 // ---------------- cloud sync wiring ----------------
 let deckWatchUnsub = null;
@@ -687,6 +754,7 @@ function updateCloudUI(){
   $('cloudSetup').style.display = cloudActive ? 'none' : 'block';
   $('cloudSignedOut').style.display = (cloudActive && !signedIn) ? 'block' : 'none';
   $('cloudSignedIn').style.display = signedIn ? 'block' : 'none';
+  $('browseCloudDecksBtn').style.display = signedIn ? 'inline-block' : 'none';
   if(signedIn){
     $('cloudStatus').textContent = 'Connected — signed in as ' + CloudStore.userLabel() + '. Decks and your collection sync live.';
   } else if(cloudActive){
@@ -712,21 +780,9 @@ async function connectFirebase(config){
         history.sort((a,b) => (b.completedAt||0)-(a.completedAt||0));
         rp = await getMeta('rp', 0);
         renderTasks(); renderLists(); renderHistory(); renderGallery(); renderWallet();
-        if(deckWatchUnsub) deckWatchUnsub();
-        deckWatchUnsub = CloudStore.watch('decks', liveDecks => {
-          // deck docs from Firestore don't carry pool or members inline (both are subcollections
-          // now, since member photos alone can exceed Firestore's 1MB per-document limit) —
-          // keep any already-fetched pool/members arrays around across live updates
-          decks = liveDecks.map(d => {
-            const existing = decks.find(x => x.deckId === d.deckId);
-            return Object.assign({ pool: existing ? existing.pool : [], members: existing ? existing.members : [] }, d);
-          });
-          renderDecks(); renderDeckSelect(); renderCollFilter();
-          decks.forEach(d => {
-            if(!d.pool || d.pool.length === 0) refreshDeckPool(d.deckId);
-            if(!d.members || d.members.length === 0) refreshDeckMembers(d.deckId);
-          });
-        });
+        // NOTE: decks intentionally do NOT auto-load here anymore. Publishing a deck makes it
+        // available to browse, but it only enters this device's collection when someone explicitly
+        // picks it via "Browse Firebase decks" below — see browseCloudDecks() / loadCloudDeckIntoCollection().
       }
     });
     updateCloudUI();
@@ -734,15 +790,85 @@ async function connectFirebase(config){
     $('cloudStatus').textContent = 'Connect failed: ' + e.message;
   }
 }
-async function refreshDeckPool(deckId){
-  const pool = await CloudStore.getAll('decks/' + deckId + '/pool');
-  const d = decks.find(x => x.deckId === deckId);
-  if(d){ d.pool = pool; renderDecks(); renderDeckSelect(); renderPackShop(); }
+let cloudDeckDirectory = [];
+async function browseCloudDecks(){
+  $('deckImportStatus').textContent = 'Fetching published decks...';
+  try{
+    cloudDeckDirectory = await CloudStore.getAll('decks');
+    const wrap = $('cloudDeckBrowser');
+    if(cloudDeckDirectory.length === 0){
+      wrap.style.display = 'none';
+      $('deckImportStatus').textContent = 'No decks published to Firebase yet.';
+      return;
+    }
+    wrap.innerHTML = '';
+    cloudDeckDirectory.forEach((d, i) => {
+      const already = decks.some(x => x.deckId === d.deckId);
+      const el = document.createElement('div');
+      el.className = 'showPickItem';
+      el.innerHTML = `
+        <div class="spInfo"><div class="spTitle">${escapeHtml(d.artistName)}</div><div class="spMeta">deck id: ${escapeHtml(d.deckId)}</div></div>
+        <button class="secondary small" type="button" ${already?'disabled':''}>${already ? '✓ Loaded' : '+ Load'}</button>
+      `;
+      el.querySelector('button').addEventListener('click', () => loadCloudDeckIntoCollection(i));
+      wrap.appendChild(el);
+    });
+    wrap.style.display = 'block';
+    $('deckImportStatus').textContent = cloudDeckDirectory.length + ' deck(s) published — pick which ones to load into your collection.';
+  }catch(e){ $('deckImportStatus').textContent = 'Failed to fetch: ' + e.message; }
 }
-async function refreshDeckMembers(deckId){
-  const members = await CloudStore.getAll('decks/' + deckId + '/members');
-  const d = decks.find(x => x.deckId === deckId);
-  if(d){ d.members = members; renderDecks(); }
+$('browseCloudDecksBtn').addEventListener('click', browseCloudDecks);
+async function loadCloudDeckIntoCollection(i){
+  const cd = cloudDeckDirectory[i];
+  $('deckImportStatus').textContent = 'Loading "' + cd.artistName + '"...';
+  try{
+    const members = await CloudStore.getAll('decks/' + cd.deckId + '/members');
+    const pool = await CloudStore.getAll('decks/' + cd.deckId + '/pool');
+    const deck = { deckId: cd.deckId, artistName: cd.artistName, members, pool, importedAt: Date.now() };
+    decks = decks.filter(x => x.deckId !== cd.deckId);
+    decks.push(deck);
+    await idbPutLocal('decks', deck);
+    renderDecks(); renderDeckSelect(); renderCollFilter();
+    $('deckImportStatus').textContent = 'Loaded "' + cd.artistName + '" — ' + members.length + ' members, ' + pool.length + ' pool entries.';
+    browseCloudDecks(); // refresh the "already loaded" checkmarks
+  }catch(e){ $('deckImportStatus').textContent = 'Load failed: ' + e.message; }
+}
+
+// re-bakes every owned card from a deck using that deck's CURRENT pool/members —
+// useful after editing a deck in Deck Builder (new faces, redesigned card art, etc.)
+async function rebakeDeckCards(deckId){
+  const deck = decks.find(x => x.deckId === deckId);
+  if(!deck) return;
+  const affected = cards.filter(c => c.deckId === deckId);
+  if(affected.length === 0){ alert('No owned cards from "' + deck.artistName + '" to update.'); return; }
+  if(!confirm('Re-bake art for ' + affected.length + ' card(s) from "' + deck.artistName + '"? Grade, stars, and lock status stay the same — only the artwork refreshes, matched by song + album + member.')) return;
+
+  // pull the latest version of this deck first, in case it was edited/republished since it was loaded
+  if(cloudActive){
+    try{
+      deck.members = await CloudStore.getAll('decks/' + deckId + '/members');
+      deck.pool = await CloudStore.getAll('decks/' + deckId + '/pool');
+      await idbPutLocal('decks', deck);
+    }catch(e){ /* fall back to whatever's already loaded locally */ }
+  }
+
+  let updated = 0, skipped = 0;
+  for(const c of affected){
+    // match by the same identity fields already stored on the card — this is what keeps a card's
+    // "identity" intact even as the deck grows: the card never points at a pool array index or
+    // anything positional, just track+album+member, so adding more songs later can't confuse it
+    const entry = deck.pool.find(p => p.track === c.track && p.album === c.album && p.memberName === c.member);
+    if(!entry){ skipped++; continue; }
+    const member = deck.members.find(m => m.id === entry.memberId) || { name: entry.memberName, img: null };
+    c.art = await bakeArt({ name: entry.track, album: entry.album, imageUrl: entry.trackImageUrl }, member, c.grade);
+    c.spotifyTrackId = entry.spotifyTrackId || c.spotifyTrackId || null;
+    c.previewUrl = entry.previewUrl || c.previewUrl || null;
+    c.externalUrl = entry.externalUrl || c.externalUrl || null;
+    await idbPut('cards', c);
+    updated++;
+  }
+  renderGallery();
+  alert('Updated ' + updated + ' card(s).' + (skipped ? ' ' + skipped + " couldn't be matched (their exact song/album/member no longer exists in the deck) and were left as-is." : ''));
 }
 function parseFirebaseConfig(text){
   let cleaned = text.trim();
@@ -820,6 +946,7 @@ function renderTasks(){
     tasks = tasks.filter(x=>x.id!==t.id);
     await idbDel('tasks', t.id);
     rp += DIFFICULTY_RP[t.difficulty];
+    SFX.taskComplete();
 
     let bonusAwarded = 0;
     // if this was the last pending item from a dropped-in quest batch, pay out the bonus
@@ -828,6 +955,7 @@ function renderTasks(){
       if(remaining === 0 && t.batchBonusRP){
         rp += t.batchBonusRP;
         bonusAwarded = t.batchBonusRP;
+        SFX.questBonus();
         alert('🎉 Quest complete: "' + t.sourceListName + '"! Bonus +' + t.batchBonusRP + ' RP');
       }
     }
@@ -1081,6 +1209,7 @@ $('submitGardenReportBtn').addEventListener('click', async () => {
   if(p.total === 0){ $('gardenReportStatus').textContent = "Couldn't find any recognizable sections — check the report format matches (Plants Growing / THX! / FEELINGS / ⭐ headers)."; return; }
   rp += p.total;
   await setMeta('rp', rp);
+  SFX.questBonus();
   const hist = {
     id:'h_'+Date.now()+Math.random().toString(36).slice(2,6),
     text: 'Garden report submitted', difficulty: null, rp: p.total,
@@ -1102,27 +1231,22 @@ function renderDecks(){
   decks.forEach(d => {
     const el = document.createElement('div');
     el.className = 'deckcard';
-    const removeLabel = cloudActive ? '🗑️ Delete from cloud' : 'Remove';
     el.innerHTML = `
       <div class="dinfo"><div class="davatar">${escapeHtml((d.artistName||'?').charAt(0).toUpperCase())}</div>
       <div><div class="dn">${escapeHtml(d.artistName)}</div><div class="dm">${d.members.length} members · ${d.pool.length} pool entries</div></div></div>
-      <button class="danger small" data-id="${d.deckId}" type="button">${removeLabel}</button>
+      <div style="display:flex;gap:6px;flex:none;">
+        <button class="secondary small" data-act="rebake" data-id="${d.deckId}" type="button">🔄 Update graphics</button>
+        <button class="danger small" data-act="remove" data-id="${d.deckId}" type="button">Remove</button>
+      </div>
     `;
-    el.querySelector('button').addEventListener('click', async () => {
-      if(cloudActive){
-        // this is a real, permanent, shared delete — make it deliberately hard to trigger by accident
-        const typed = prompt('This permanently deletes "' + d.artistName + '" from the cloud for everyone signed in. Type the deck name exactly to confirm:');
-        if(typed !== d.artistName) { if(typed !== null) alert('Name didn\'t match — nothing was deleted.'); return; }
-        await CloudStore.clearCollection('decks/' + d.deckId + '/pool');
-        await CloudStore.clearCollection('decks/' + d.deckId + '/members');
-        await CloudStore.del('decks', d.deckId);
-      } else {
-        if(!confirm('Remove deck "' + d.artistName + '" from your local list? Cards you already own from it stay in your collection.')) return;
-        decks = decks.filter(x=>x.deckId!==d.deckId);
-        await idbDelLocal('decks', d.deckId);
-        renderDecks(); renderDeckSelect(); renderCollFilter();
-      }
+    el.querySelector('[data-act="remove"]').addEventListener('click', async () => {
+      // local-only, always — deleting a deck from the cloud is deliberately only possible in Deck Builder now
+      if(!confirm('Remove deck "' + d.artistName + '" from your local list? Cards you already own from it stay in your collection. (This never deletes anything from the cloud — that only happens in Deck Builder.)')) return;
+      decks = decks.filter(x=>x.deckId!==d.deckId);
+      await idbDelLocal('decks', d.deckId);
+      renderDecks(); renderDeckSelect(); renderCollFilter();
     });
+    el.querySelector('[data-act="rebake"]').addEventListener('click', () => rebakeDeckCards(d.deckId));
     list.appendChild(el);
   });
 }
@@ -1445,6 +1569,7 @@ $('deckSelect').addEventListener('change', renderPackShop);
 async function showPackReveal(pack, newCards){
   const stage = $('revealStage');
   $('packRevealBg').classList.add('open');
+  SFX.packOpenWhoosh();
 
   for(let i=0;i<newCards.length;i++){
     const c = newCards[i];
@@ -1467,6 +1592,7 @@ async function showPackReveal(pack, newCards){
     $('revealSkipBtn').addEventListener('click', () => { skipped = true; });
     await sleep(250);
     $('revealInner').classList.add('flipped');
+    SFX.cardFlip(c.grade);
     if(isTopTier){ await sleep(300); $('revealBurst').classList.add('go'); }
     await sleep(skipped ? 80 : (isTopTier ? 950 : 550));
     if(skipped) break;
@@ -1494,6 +1620,7 @@ async function openPack(packId){
   if(rp < pack.cost){ $('pullStatus').textContent = 'Not enough RP (need ' + pack.cost + ', have ' + rp + ').'; return; }
 
   rp -= pack.cost; await setMeta('rp', rp); renderWallet();
+  SFX.packBuy();
 
   const rolled = [];
   for(let i=0;i<pack.size;i++) rolled.push(rollWeighted(pack.weights));
@@ -1910,6 +2037,7 @@ function openCardModal(cardId){
     await idbDel('cards', material.id);
     if(success && c.stars < 5) c.stars += 1;
     await idbPut('cards', c);
+    if(success) SFX.powerupSuccess(); else SFX.powerupFail();
     showAnimResult(success, success ? '✨ +1 star!' : '💔 Failed — material lost');
     renderGallery();
     await sleep(1100);
@@ -1961,6 +2089,7 @@ function openCardModal(cardId){
     c.grade = nextGrade;
     c.stars = 0;
     await idbPut('cards', c);
+    SFX.upgradeSuccess();
     showAnimResult(true, '🎉 Upgraded to ' + nextGrade + '!');
     renderGallery();
     await sleep(1100);
