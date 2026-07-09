@@ -1646,7 +1646,6 @@ function openAlbumDetail(deckId, albumName){
   `;
   $('albumModalBody').querySelectorAll('.dcCell.owned').forEach(cell => {
     cell.addEventListener('click', () => {
-      $('albumModalBg').classList.remove('open');
       openCardModal(cell.dataset.cardId);
     });
   });
