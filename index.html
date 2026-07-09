@@ -1924,7 +1924,7 @@ function openCardModal(cardId){
   const showPowerup = puMats.length > 0;
   const showUpgrade = canUpgradeGrade && upMats.length > 0;
 
-  const playLink = c.spotifyTrackId ? `<a href="https://open.spotify.com/track/${c.spotifyTrackId}" target="_blank" rel="noopener" class="spotifyplay">▶ Play on Spotify</a>`
+  const playLink = c.spotifyTrackId ? `<iframe style="border-radius:14px;margin-top:14px;" src="https://open.spotify.com/embed/track/${c.spotifyTrackId}?utm_source=generator&theme=0" width="100%" height="152" frameborder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>`
     : (c.previewUrl ? `<audio controls src="${c.previewUrl}" style="width:100%;margin-top:14px;"></audio><div class="status" style="text-align:center;">30-second preview (via iTunes)</div>`
     : (c.externalUrl ? `<a href="${c.externalUrl}" target="_blank" rel="noopener" class="spotifyplay" style="background:linear-gradient(135deg,#5eead4,#33c9b0);color:#06251f;">🔗 View on TVmaze</a>` : ''));
 
