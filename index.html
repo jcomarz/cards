@@ -76,6 +76,12 @@
   .track .meta .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .track .meta .a{color:var(--dim);font-size:11px;}
   .track input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);flex:none;}
+  .pageRow{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:12px;}
+  .pageLabel{font-size:12px;color:var(--dim);min-width:80px;text-align:center;}
+  .groupRowScroll{display:flex;overflow-x:auto;gap:14px;padding-bottom:6px;scroll-snap-type:x proximity;}
+  .groupRowScroll .card{flex:0 0 150px;scroll-snap-align:start;}
+  .groupRowScroll::-webkit-scrollbar{height:6px;}
+  .groupRowScroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
   .count-pill{display:inline-block;background:var(--ink2);border:1px solid var(--line);padding:3px 11px;border-radius:20px;font-size:11px;color:var(--dim);margin-left:8px;font-weight:600;}
   .deckcard{
     background:var(--ink2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;
@@ -349,8 +355,27 @@
 <div class="panel" id="historyPanel">
   <h2><span class="ic">🕒</span>History <span class="count-pill" id="historyCount">0 completed</span></h2>
   <div class="status">Everything you've completed. Undo puts it back on your to-do and takes the RP back; Again just adds a fresh copy without touching what you already earned.</div>
-  <div class="tracks" id="historyList" style="margin-top:10px;"></div>
+  <div class="row" style="margin-top:10px;">
+    <div><label>Auto-clear entries older than</label>
+      <select id="historyAutoClear">
+        <option value="0">Never</option>
+        <option value="7">7 days</option>
+        <option value="30">30 days</option>
+        <option value="90">90 days</option>
+      </select>
+    </div>
+  </div>
+  <div class="row" style="margin-top:8px;align-items:center;">
+    <label style="display:flex;align-items:center;gap:6px;margin:0;flex:none;"><input type="checkbox" id="historySelectAllChk"> select all on this page</label>
+    <button class="danger small" id="historyDeleteSelectedBtn" type="button" style="flex:none;">🗑️ Delete selected</button>
+  </div>
+  <div class="tracks" id="historyList" style="margin-top:10px;max-height:420px;overflow-y:auto;"></div>
   <div class="empty" id="historyEmpty">Nothing completed yet.</div>
+  <div class="pageRow" id="historyPager" style="display:none;">
+    <button class="secondary small" id="historyPrevBtn" type="button">‹ Prev</button>
+    <span id="historyPageLabel" class="pageLabel"></span>
+    <button class="secondary small" id="historyNextBtn" type="button">Next ›</button>
+  </div>
 </div>
 
 <div class="panel" id="gardenReportPanel">
@@ -420,17 +445,23 @@
 
 <div class="panel">
   <h2><span class="ic">🗂️</span>Collection <span class="count-pill" id="collCount">0 cards</span></h2>
+  <label>Decks shown <a href="#" id="deckFilterAll" class="linkbtn">all</a> · <a href="#" id="deckFilterNone" class="linkbtn">none</a></label>
+  <div class="difficulty-chips" id="deckFilterChips" style="margin-bottom:10px;"></div>
   <div class="row">
-    <div>
-      <label>Filter by deck</label>
-      <select id="collFilter"><option value="">All decks</option></select>
-    </div>
     <div>
       <label>Group by</label>
       <select id="collGroupBy">
         <option value="none">No grouping</option>
         <option value="album">By album</option>
         <option value="member">By member</option>
+      </select>
+    </div>
+    <div>
+      <label>Sort by</label>
+      <select id="collSort">
+        <option value="recent">Newest first</option>
+        <option value="rarityDesc">Rarity: high → low</option>
+        <option value="rarityAsc">Rarity: low → high</option>
       </select>
     </div>
     <div style="flex:none;align-self:flex-end;">
@@ -440,6 +471,11 @@
   </div>
   <div class="gallery" id="gallery"></div>
   <div class="empty" id="galleryEmpty">No cards yet — import a deck, then open a booster pack.</div>
+  <div class="pageRow" id="galleryPager" style="display:none;">
+    <button class="secondary small" id="galleryPrevBtn" type="button">‹ Prev</button>
+    <span id="galleryPageLabel" class="pageLabel"></span>
+    <button class="secondary small" id="galleryNextBtn" type="button">Next ›</button>
+  </div>
 </div>
 
 <div class="panel" id="setsPanel" style="display:none;">
@@ -447,6 +483,11 @@
   <div class="status">Each album from your decks is a set. Fill it in with any grade to start, then push every member's card to R for the full-set glow.</div>
   <div id="setsGrid" style="margin-top:14px;"></div>
   <div class="empty" id="setsEmpty">Import a deck to see its sets here.</div>
+  <div class="pageRow" id="setsPager" style="display:none;">
+    <button class="secondary small" id="setsPrevBtn" type="button">‹ Prev</button>
+    <span id="setsPageLabel" class="pageLabel"></span>
+    <button class="secondary small" id="setsNextBtn" type="button">Next ›</button>
+  </div>
 </div>
 
 <div class="modal-bg" id="albumModalBg">
@@ -628,6 +669,7 @@ async function setMeta(key, value){
 
 // ---------------- state ----------------
 let decks = [];      // [{deckId, artistName, members:[], pool:[], importedAt}]
+let includedDeckIds = new Set(); // decks currently shown in Collection/Sets — new decks default to included
 let cards = [];
 let tasks = [];
 let rp = 0;
@@ -926,23 +968,48 @@ function renderLists(){
 $('libraryCategoryFilter').addEventListener('change', renderLists);
 
 // ---------------- completed task history ----------------
+let historyPage = 0;
+const HISTORY_PAGE_SIZE = 15;
+async function applyHistoryAutoClear(){
+  const days = parseInt($('historyAutoClear').value) || 0;
+  await setMeta('historyAutoClearDays', days);
+  if(days === 0) return;
+  const cutoff = Date.now() - days*24*60*60*1000;
+  const toRemove = history.filter(h => (h.completedAt||0) < cutoff);
+  if(toRemove.length === 0) return;
+  history = history.filter(h => (h.completedAt||0) >= cutoff);
+  for(const h of toRemove) await idbDel('history', h.id);
+}
 function renderHistory(){
+  const totalPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+  if(historyPage >= totalPages) historyPage = totalPages - 1;
+  if(historyPage < 0) historyPage = 0;
+  const pageItems = history.slice(historyPage*HISTORY_PAGE_SIZE, (historyPage+1)*HISTORY_PAGE_SIZE);
+
   const wrap = $('historyList');
   wrap.innerHTML = '';
   $('historyEmpty').style.display = history.length ? 'none' : 'block';
   $('historyCount').textContent = history.length + ' completed';
-  history.slice(0, 100).forEach(h => {
+  $('historyPager').style.display = history.length > HISTORY_PAGE_SIZE ? 'flex' : 'none';
+  $('historyPageLabel').textContent = 'Page ' + (historyPage+1) + ' / ' + totalPages;
+  $('historyPrevBtn').disabled = historyPage === 0;
+  $('historyNextBtn').disabled = historyPage >= totalPages-1;
+  $('historySelectAllChk').checked = false;
+
+  pageItems.forEach(h => {
     const row = document.createElement('div');
     row.className = 'track';
     const when = new Date(h.completedAt).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
     const catTag = h.category ? `<span class="taskCatChip">${escapeHtml(h.category)}</span>` : '';
     row.innerHTML = `
+      <input type="checkbox" class="historyChk" data-id="${h.id}">
       <div class="meta">
         <div class="t">${escapeHtml(h.text)} ${catTag}</div>
         <div class="a">+${h.rp} RP · ${when}</div>
       </div>
-      <button class="secondary small" data-act="again" data-id="${h.id}" type="button">🔁 Again</button>
-      <button class="secondary small" data-act="undo" data-id="${h.id}" type="button">↩️ Undo</button>
+      <button class="secondary small" data-act="again" data-id="${h.id}" type="button">🔁</button>
+      <button class="secondary small" data-act="undo" data-id="${h.id}" type="button">↩️</button>
+      <button class="danger small" data-act="del" data-id="${h.id}" type="button">🗑️</button>
     `;
     wrap.appendChild(row);
   });
@@ -968,7 +1035,29 @@ function renderHistory(){
     renderTasks();
     alert('"' + h.text + '" is back on your to-do — completing it again pays RP fresh, on top of what you already earned.');
   }));
+  wrap.querySelectorAll('[data-act="del"]').forEach(btn => btn.addEventListener('click', async e => {
+    const h = history.find(x=>x.id===e.target.dataset.id);
+    if(!h) return;
+    if(!confirm('Delete "' + h.text + '" from history? RP already earned stays yours — this just tidies the list.')) return;
+    history = history.filter(x=>x.id!==h.id);
+    await idbDel('history', h.id);
+    renderHistory();
+  }));
 }
+$('historyPrevBtn').addEventListener('click', () => { historyPage--; renderHistory(); });
+$('historyNextBtn').addEventListener('click', () => { historyPage++; renderHistory(); });
+$('historySelectAllChk').addEventListener('change', e => {
+  document.querySelectorAll('.historyChk').forEach(c => c.checked = e.target.checked);
+});
+$('historyDeleteSelectedBtn').addEventListener('click', async () => {
+  const ids = Array.from(document.querySelectorAll('.historyChk:checked')).map(c=>c.dataset.id);
+  if(ids.length === 0){ alert('Select at least one entry first.'); return; }
+  if(!confirm('Delete ' + ids.length + ' history entries? RP already earned stays yours.')) return;
+  for(const id of ids) await idbDel('history', id);
+  history = history.filter(h => !ids.includes(h.id));
+  renderHistory();
+});
+$('historyAutoClear').addEventListener('change', async () => { await applyHistoryAutoClear(); renderHistory(); });
 
 // ---------------- garden report auto-scoring ----------------
 function parseGardenReport(text){
@@ -1040,16 +1129,36 @@ function renderDeckSelect(){
   renderPackShop();
 }
 function renderCollFilter(){
-  const sel = $('collFilter');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">All decks</option>';
+  // multi-select chip filter — a deck not in includedDeckIds is hidden from the gallery/sets
+  decks.forEach(d => { if(!includedDeckIds.has(d.deckId)) includedDeckIds.add(d.deckId); }); // new decks default to shown
+  const wrap = $('deckFilterChips');
+  wrap.innerHTML = '';
+  if(decks.length === 0){ wrap.innerHTML = '<div class="empty" style="padding:6px;">No decks imported yet.</div>'; return; }
   decks.forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d.deckId; opt.textContent = d.artistName;
-    sel.appendChild(opt);
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (includedDeckIds.has(d.deckId) ? ' active' : '');
+    chip.textContent = d.artistName;
+    chip.style.flex = 'none';
+    chip.addEventListener('click', () => {
+      if(includedDeckIds.has(d.deckId)) includedDeckIds.delete(d.deckId); else includedDeckIds.add(d.deckId);
+      renderCollFilter(); galleryPage = 0; setsPage = 0; renderGallery();
+      if($('setsPanel').style.display !== 'none') renderSets();
+    });
+    wrap.appendChild(chip);
   });
-  sel.value = decks.some(d=>d.deckId===prev) ? prev : '';
 }
+$('deckFilterAll').addEventListener('click', e => {
+  e.preventDefault();
+  decks.forEach(d => includedDeckIds.add(d.deckId));
+  renderCollFilter(); galleryPage = 0; setsPage = 0; renderGallery();
+  if($('setsPanel').style.display !== 'none') renderSets();
+});
+$('deckFilterNone').addEventListener('click', e => {
+  e.preventDefault();
+  includedDeckIds.clear();
+  renderCollFilter(); galleryPage = 0; setsPage = 0; renderGallery();
+  if($('setsPanel').style.display !== 'none') renderSets();
+});
 $('importDeckBtn').addEventListener('click', () => $('importDeckFile').click());
 $('importDeckFile').addEventListener('change', async e => {
   const file = e.target.files[0]; if(!file) return;
@@ -1426,12 +1535,13 @@ function renderWallet(){ $('rpBalance').textContent = rp.toLocaleString(); }
 $('addRpBtn').addEventListener('click', async () => { rp += 1000; await setMeta('rp', rp); renderWallet(); });
 
 // ---------------- sets ----------------
+let setsPage = 0;
+const SETS_PAGE_SIZE = 6;
 function renderSets(){
   const grid = $('setsGrid');
   grid.innerHTML = '';
-  const filterDeck = $('collFilter').value;
-  const relevantDecks = filterDeck ? decks.filter(d=>d.deckId===filterDeck) : decks;
-  let anySets = false;
+  const relevantDecks = decks.filter(d => includedDeckIds.has(d.deckId));
+  const setEntries = []; // {deck, albumName, info}
 
   relevantDecks.forEach(deck => {
     if(!deck.pool || deck.pool.length === 0) return;
@@ -1443,42 +1553,56 @@ function renderSets(){
     });
     Object.entries(albums).forEach(([albumName, info]) => {
       if(info.members.size === 0) return;
-      anySets = true;
-      const memberEntries = Array.from(info.members.entries()); // [memberId, memberName]
-      let rCount = 0, ownedCount = 0;
-      const chipsHtml = memberEntries.map(([memberId, memberName]) => {
-        const owned = cards.filter(c => c.deckId===deck.deckId && c.album===albumName && c.member===memberName);
-        if(owned.length === 0){
-          const member = deck.members.find(m=>m.id===memberId);
-          return `<div class="setMemberChip missing" title="${escapeHtml(memberName)} — not owned">${member&&member.img?`<img src="${member.img}">`:''}</div>`;
-        }
-        ownedCount++;
-        const best = owned.reduce((a,b) => gradeIdx(b.grade) > gradeIdx(a.grade) ? b : a);
-        const isR = best.grade === 'R';
-        if(isR) rCount++;
-        return `<div class="setMemberChip" style="border-color:${GRADE_COLOR[best.grade]}" title="${escapeHtml(memberName)} — ${best.grade}${best.stars}★">
-          <img src="${best.art}">${isR ? '<span class="rcrown">👑</span>' : ''}
-        </div>`;
-      }).join('');
-      const complete = rCount === memberEntries.length;
-      const card = document.createElement('div');
-      card.className = 'setCard' + (complete ? ' complete' : '');
-      card.style.cursor = 'pointer';
-      card.innerHTML = `
-        <img class="setThumb" src="${info.art||''}">
-        <div class="setInfo">
-          <div class="setTitle">${escapeHtml(albumName)} ${complete ? '👑 FULL R SET' : ''}</div>
-          <div class="setDeck">${escapeHtml(deck.artistName)}</div>
-          <div class="setMembers">${chipsHtml}</div>
-          <div class="setProgress">${ownedCount}/${memberEntries.length} owned · ${rCount}/${memberEntries.length} at R grade — tap for the full track checklist</div>
-        </div>
-      `;
-      card.addEventListener('click', () => openAlbumDetail(deck.deckId, albumName));
-      grid.appendChild(card);
+      setEntries.push({deck, albumName, info});
     });
   });
-  $('setsEmpty').style.display = anySets ? 'none' : 'block';
+
+  $('setsEmpty').style.display = setEntries.length ? 'none' : 'block';
+  const totalPages = Math.max(1, Math.ceil(setEntries.length / SETS_PAGE_SIZE));
+  if(setsPage >= totalPages) setsPage = totalPages - 1;
+  if(setsPage < 0) setsPage = 0;
+  const pageEntries = setEntries.slice(setsPage*SETS_PAGE_SIZE, (setsPage+1)*SETS_PAGE_SIZE);
+  $('setsPager').style.display = setEntries.length > SETS_PAGE_SIZE ? 'flex' : 'none';
+  $('setsPageLabel').textContent = 'Page ' + (setsPage+1) + ' / ' + totalPages;
+  $('setsPrevBtn').disabled = setsPage === 0;
+  $('setsNextBtn').disabled = setsPage >= totalPages-1;
+
+  pageEntries.forEach(({deck, albumName, info}) => {
+    const memberEntries = Array.from(info.members.entries()); // [memberId, memberName]
+    let rCount = 0, ownedCount = 0;
+    const chipsHtml = memberEntries.map(([memberId, memberName]) => {
+      const owned = cards.filter(c => c.deckId===deck.deckId && c.album===albumName && c.member===memberName);
+      if(owned.length === 0){
+        const member = deck.members.find(m=>m.id===memberId);
+        return `<div class="setMemberChip missing" title="${escapeHtml(memberName)} — not owned">${member&&member.img?`<img src="${member.img}">`:''}</div>`;
+      }
+      ownedCount++;
+      const best = owned.reduce((a,b) => gradeIdx(b.grade) > gradeIdx(a.grade) ? b : a);
+      const isR = best.grade === 'R';
+      if(isR) rCount++;
+      return `<div class="setMemberChip" style="border-color:${GRADE_COLOR[best.grade]}" title="${escapeHtml(memberName)} — ${best.grade}${best.stars}★">
+        <img src="${best.art}">${isR ? '<span class="rcrown">👑</span>' : ''}
+      </div>`;
+    }).join('');
+    const complete = rCount === memberEntries.length;
+    const card = document.createElement('div');
+    card.className = 'setCard' + (complete ? ' complete' : '');
+    card.style.cursor = 'pointer';
+    card.innerHTML = `
+      <img class="setThumb" src="${info.art||''}">
+      <div class="setInfo">
+        <div class="setTitle">${escapeHtml(albumName)} ${complete ? '👑 FULL R SET' : ''}</div>
+        <div class="setDeck">${escapeHtml(deck.artistName)}</div>
+        <div class="setMembers">${chipsHtml}</div>
+        <div class="setProgress">${ownedCount}/${memberEntries.length} owned · ${rCount}/${memberEntries.length} at R grade — tap for the full track checklist</div>
+      </div>
+    `;
+    card.addEventListener('click', () => openAlbumDetail(deck.deckId, albumName));
+    grid.appendChild(card);
+  });
 }
+$('setsPrevBtn').addEventListener('click', () => { setsPage--; renderSets(); });
+$('setsNextBtn').addEventListener('click', () => { setsPage++; renderSets(); });
 
 // ---------------- album detail: exact track × member missing-card checklist ----------------
 function openAlbumDetail(deckId, albumName){
@@ -1503,7 +1627,7 @@ function openAlbumDetail(deckId, albumName){
       ownedCells++;
       const best = owned.reduce((a,b) => gradeIdx(b.grade) > gradeIdx(a.grade) ? b : a);
       if(best.grade === 'R') rCells++;
-      return `<div class="dcCell owned" style="border-color:${GRADE_COLOR[best.grade]}" title="${escapeHtml(member.name)} — ${best.grade}${best.stars}★">
+      return `<div class="dcCell owned" data-card-id="${best.id}" style="border-color:${GRADE_COLOR[best.grade]};cursor:pointer;" title="${escapeHtml(member.name)} — ${best.grade}${best.stars}★ — tap to view">
         <img src="${best.art}"><span class="dcGrade" style="color:${GRADE_COLOR[best.grade]}">${best.grade}</span>
       </div>`;
     }).join('');
@@ -1520,6 +1644,12 @@ function openAlbumDetail(deckId, albumName){
     <div class="grademeta">${escapeHtml(deck.artistName)} · ${ownedCells}/${totalCells} cards owned · ${rCells}/${totalCells} at R grade</div>
     <div class="dcGrid">${header}${rows}</div>
   `;
+  $('albumModalBody').querySelectorAll('.dcCell.owned').forEach(cell => {
+    cell.addEventListener('click', () => {
+      $('albumModalBg').classList.remove('open');
+      openCardModal(cell.dataset.cardId);
+    });
+  });
   $('albumModalBg').classList.add('open');
 }
 $('albumModalClose').addEventListener('click', () => $('albumModalBg').classList.remove('open'));
@@ -1532,19 +1662,40 @@ $('viewSetsBtn').addEventListener('click', () => {
 });
 
 // ---------------- gallery ----------------
+let galleryPage = 0;
+const GALLERY_PAGE_SIZE = 24;
+function sortCards(list, mode){
+  const arr = list.slice();
+  if(mode === 'rarityDesc') arr.sort((a,b) => gradeIdx(b.grade)-gradeIdx(a.grade) || b.stars-a.stars || (b.createdAt||0)-(a.createdAt||0));
+  else if(mode === 'rarityAsc') arr.sort((a,b) => gradeIdx(a.grade)-gradeIdx(b.grade) || b.stars-a.stars || (b.createdAt||0)-(a.createdAt||0));
+  else arr.sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
+  return arr;
+}
 function renderGallery(){
   const gallery = $('gallery');
-  const filterDeck = $('collFilter').value;
   const groupBy = $('collGroupBy').value;
-  const visible = filterDeck ? cards.filter(c=>c.deckId===filterDeck) : cards;
+  const sortMode = $('collSort').value;
+  const visible = cards.filter(c => includedDeckIds.has(c.deckId));
   gallery.innerHTML = '';
-  $('collCount').textContent = visible.length + ' cards' + (filterDeck ? '' : ' (' + cards.length + ' total)');
+  $('collCount').textContent = visible.length + ' cards' + (visible.length===cards.length ? '' : ' (' + cards.length + ' total)');
   $('galleryEmpty').style.display = visible.length ? 'none' : 'block';
 
   if(groupBy === 'none'){
-    visible.forEach(c => gallery.appendChild(cardEl(c)));
+    const sorted = sortCards(visible, sortMode);
+    const totalPages = Math.max(1, Math.ceil(sorted.length / GALLERY_PAGE_SIZE));
+    if(galleryPage >= totalPages) galleryPage = totalPages - 1;
+    if(galleryPage < 0) galleryPage = 0;
+    const pageItems = sorted.slice(galleryPage*GALLERY_PAGE_SIZE, (galleryPage+1)*GALLERY_PAGE_SIZE);
+    pageItems.forEach(c => gallery.appendChild(cardEl(c)));
+    $('galleryPager').style.display = sorted.length > GALLERY_PAGE_SIZE ? 'flex' : 'none';
+    $('galleryPageLabel').textContent = 'Page ' + (galleryPage+1) + ' / ' + totalPages;
+    $('galleryPrevBtn').disabled = galleryPage === 0;
+    $('galleryNextBtn').disabled = galleryPage >= totalPages-1;
+    if($('setsPanel').style.display !== 'none') renderSets();
     return;
   }
+
+  $('galleryPager').style.display = 'none';
   const key = groupBy === 'album' ? 'album' : 'member';
   const groups = {};
   visible.forEach(c => { const k = c[key] || '(unknown)'; (groups[k] = groups[k] || []).push(c); });
@@ -1555,14 +1706,16 @@ function renderGallery(){
     header.textContent = k + ' (' + groups[k].length + ')';
     gallery.appendChild(header);
     const row = document.createElement('div');
-    row.className = 'gallery groupRow';
-    groups[k].forEach(c => row.appendChild(cardEl(c)));
+    row.className = 'groupRowScroll';
+    sortCards(groups[k], sortMode).forEach(c => row.appendChild(cardEl(c)));
     gallery.appendChild(row);
   });
   if($('setsPanel').style.display !== 'none') renderSets();
 }
-$('collFilter').addEventListener('change', renderGallery);
-$('collGroupBy').addEventListener('change', renderGallery);
+$('collGroupBy').addEventListener('change', () => { galleryPage = 0; renderGallery(); });
+$('collSort').addEventListener('change', () => { galleryPage = 0; renderGallery(); });
+$('galleryPrevBtn').addEventListener('click', () => { galleryPage--; renderGallery(); });
+$('galleryNextBtn').addEventListener('click', () => { galleryPage++; renderGallery(); });
 function starPipsHtml(stars){
   return Array.from({length:5}).map((_,i) =>
     `<span class="starpip ${i<stars?'filled':'hollow'}">★</span>`
@@ -1891,6 +2044,9 @@ $('importFile').addEventListener('change', async e => {
   lists = await idbAllLocal('lists');
   history = await idbAllLocal('history');
   history.sort((a,b) => (b.completedAt||0)-(a.completedAt||0));
+  const savedAutoClear = await getMetaLocal('historyAutoClearDays', 0);
+  $('historyAutoClear').value = String(savedAutoClear);
+  await applyHistoryAutoClear();
   rp = await getMetaLocal('rp', 0);
   renderDecks();
   renderDeckSelect();
