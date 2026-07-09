@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Collection — Card Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --ink:#0b0e1a; --ink2:#131829; --panel:#171d33; --line:#2a3253;
+    --text:#e9ecf7; --dim:#8891b3; --accent:#5eead4; --accent2:#f472b6;
+    --c:#8a93ad; --b:#5fae6f; --a:#5b9bf0; --s:#b26cf0; --r:#f5c451;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Segoe UI',system-ui,sans-serif;
+    background:radial-gradient(circle at 15% 0%, #1a2140 0%, transparent 45%),
+               radial-gradient(circle at 85% 10%, #221a3d 0%, transparent 40%), var(--ink);
+    color:var(--text); min-height:100vh; padding:20px 16px 70px;
+  }
+  h1{font-family:Georgia,serif;font-weight:700;font-size:28px;margin:0 0 2px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px;}
+  .topbar{
+    display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:20px;
+    position:sticky;top:10px;z-index:30;
+  }
+  .wallet{
+    background:linear-gradient(135deg,#2a1a3d,#1a2140);border:1px solid var(--line);border-radius:16px;
+    padding:12px 20px;font-size:14px;display:flex;gap:12px;align-items:center;
+    box-shadow:0 8px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .wallet .coin{font-size:20px;}
+  .wallet b{color:var(--r);font-size:20px;font-weight:800;}
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px 20px 22px;margin-bottom:18px;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+  }
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:1.6px;color:var(--accent);margin:0 0 14px;display:flex;align-items:center;gap:8px;}
+  .panel h2 .ic{font-size:18px;}
+  label{display:block;font-size:12px;color:var(--dim);margin-bottom:4px;margin-top:10px;}
+  label:first-child{margin-top:0;}
+  input[type=text],input[type=number]{
+    width:100%;background:var(--ink2);border:1px solid var(--line);color:var(--text);
+    padding:13px 14px;border-radius:12px;font-size:15px;
+  }
+  input[type=text]:focus,input[type=number]:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  select{width:100%;background:var(--ink2);border:1px solid var(--line);color:var(--text);padding:11px 12px;border-radius:12px;font-size:14px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:140px;}
+  button{
+    background:linear-gradient(135deg,var(--accent),#33c9b0);color:#06251f;border:none;font-weight:800;
+    padding:14px 22px;border-radius:14px;cursor:pointer;font-size:14px;margin-top:14px;
+    box-shadow:0 6px 16px rgba(94,234,212,.25);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  button:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 22px rgba(94,234,212,.35);}
+  button:active:not(:disabled){transform:translateY(0);}
+  button.secondary{background:var(--ink2);color:var(--text);border:1px solid var(--line);box-shadow:0 4px 12px rgba(0,0,0,.3);}
+  button.secondary:hover:not(:disabled){box-shadow:0 8px 18px rgba(0,0,0,.4);}
+  button.ghost{background:transparent;color:var(--dim);border:1px dashed var(--line);box-shadow:none;}
+  button.danger{background:#3a1a24;color:#f78ca2;border:1px solid #5a2536;box-shadow:0 4px 12px rgba(90,37,54,.3);}
+  button:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
+  button.small{padding:8px 14px;font-size:12px;margin-top:0;border-radius:10px;}
+  button.big{padding:18px 24px;font-size:16px;border-radius:16px;width:100%;}
+  .status{font-size:12px;color:var(--dim);margin-top:8px;min-height:16px;}
+  .tracks{max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:14px;}
+  .track{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);font-size:14px;}
+  .track:last-child{border-bottom:none;}
+  .track .meta{flex:1;min-width:0;}
+  .track .meta .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .track .meta .a{color:var(--dim);font-size:11px;}
+  .track input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);flex:none;}
+  .count-pill{display:inline-block;background:var(--ink2);border:1px solid var(--line);padding:3px 11px;border-radius:20px;font-size:11px;color:var(--dim);margin-left:8px;font-weight:600;}
+  .deckcard{
+    background:var(--ink2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;
+    box-shadow:0 4px 12px rgba(0,0,0,.2);
+  }
+  .deckcard .davatar{
+    width:40px;height:40px;border-radius:50%;flex:none;
+    background:linear-gradient(135deg,var(--accent2),var(--accent));
+    display:flex;align-items:center;justify-content:center;font-weight:800;color:#0b0e1a;font-size:16px;
+  }
+  .deckcard .dinfo{display:flex;align-items:center;gap:12px;min-width:0;}
+  .deckcard .dn{font-weight:700;font-size:15px;}
+  .deckcard .dm{font-size:11px;color:var(--dim);}
+  .difficulty-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+  .chip{
+    flex:1;min-width:90px;text-align:center;padding:12px 10px;border-radius:12px;cursor:pointer;
+    background:var(--ink2);border:2px solid var(--line);font-size:13px;font-weight:700;color:var(--dim);
+    transition:transform .12s ease;
+  }
+  .chip:hover{transform:translateY(-2px);}
+  .chip.active{color:#06251f;border-color:transparent;}
+  .chip[data-d="easy"].active{background:linear-gradient(135deg,#7fe0a0,#5fae6f);}
+  .chip[data-d="medium"].active{background:linear-gradient(135deg,#8ec4f7,#5b9bf0);}
+  .chip[data-d="hard"].active{background:linear-gradient(135deg,#cf9bf7,#b26cf0);}
+  .chip[data-d="epic"].active{background:linear-gradient(135deg,#ffdd8a,#f5c451);}
+  .packcard{
+    background:var(--ink2);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+    display:flex;flex-direction:column;box-shadow:0 8px 20px rgba(0,0,0,.3);transition:transform .12s ease;
+  }
+  .packcard:hover{transform:translateY(-3px);}
+  .packcard .pbanner{padding:14px 16px 10px;}
+  .packcard .picon{font-size:28px;}
+  .packcard .ptier{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;font-weight:800;margin:6px 0 2px;}
+  .packcard .ptitle{font-size:17px;font-weight:800;margin-bottom:6px;}
+  .packcard .pbody{padding:0 16px 16px;display:flex;flex-direction:column;flex:1;}
+  .packcard .pdesc{font-size:12px;color:var(--dim);flex:1;margin-bottom:10px;line-height:1.5;}
+  .packcard .podds{font-size:10px;color:var(--dim);margin-bottom:6px;line-height:1.7;}
+  .packcard button{margin-top:10px;width:100%;}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:18px;margin-top:16px;}
+  .card{
+    position:relative;aspect-ratio:5/7;border-radius:18px;overflow:hidden;background:#000;border:3px solid var(--c);
+    box-shadow:0 8px 22px rgba(0,0,0,.45);cursor:pointer;transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .card:hover{transform:translateY(-4px) scale(1.02);}
+  .card.b{border-color:var(--b);}
+  .card.a{border-color:var(--a);box-shadow:0 0 16px rgba(91,155,240,.4),0 8px 22px rgba(0,0,0,.45);}
+  .card.s{border-color:var(--s);box-shadow:0 0 18px rgba(178,108,240,.5),0 8px 22px rgba(0,0,0,.45);}
+  .card.r{border-color:var(--r);box-shadow:0 0 26px rgba(245,196,81,.6),0 8px 24px rgba(0,0,0,.45);}
+  .card img.bg{width:100%;height:100%;object-fit:cover;display:block;}
+  .card .tag{position:absolute;top:8px;left:8px;font-size:16px;font-weight:800;padding:5px 12px;border-radius:9px;background:rgba(0,0,0,.75);z-index:3;box-shadow:0 2px 8px rgba(0,0,0,.4);}
+  .card .tag.c{color:var(--c);} .card .tag.b{color:var(--b);} .card .tag.a{color:var(--a);} .card .tag.s{color:var(--s);} .card .tag.r{color:var(--r);}
+  .card .starcol{position:absolute;top:52px;left:8px;display:flex;flex-direction:column;gap:2px;z-index:2;background:rgba(0,0,0,.6);padding:5px 4px;border-radius:9px;}
+  .card .starcol .starpip{font-size:18px;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,.9);}
+  .card .starcol .starpip.filled{color:#ffd94a;}
+  .card .starcol .starpip.hollow{color:#8b93a8;opacity:.5;}
+  .card .deckchip{position:absolute;top:8px;right:8px;max-width:52%;font-size:9px;color:var(--dim);background:rgba(0,0,0,.65);padding:3px 7px;border-radius:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:2;}
+  .groupHeader{font-weight:800;font-size:14px;color:var(--accent);margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line);}
+  .groupHeader:first-child{margin-top:6px;}
+  .groupRow{margin-top:0 !important;}
+  .setCard{background:var(--ink2);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px;display:flex;gap:14px;align-items:center;box-shadow:0 6px 16px rgba(0,0,0,.25);}
+  .setCard.complete{border-color:var(--r);box-shadow:0 0 26px rgba(245,196,81,.45);}
+  .setThumb{width:64px;height:64px;border-radius:10px;object-fit:cover;flex:none;background:#000;}
+  .setInfo{flex:1;min-width:0;}
+  .setTitle{font-weight:800;font-size:14px;}
+  .setDeck{font-size:11px;color:var(--dim);margin-bottom:8px;}
+  .setMembers{display:flex;gap:7px;flex-wrap:wrap;}
+  .setMemberChip{width:36px;height:36px;border-radius:50%;position:relative;flex:none;border:3px solid var(--line);overflow:hidden;background:var(--ink);}
+  .setMemberChip img{width:100%;height:100%;object-fit:cover;}
+  .setMemberChip.missing{opacity:.28;filter:grayscale(1);}
+  .setMemberChip .rcrown{position:absolute;top:-7px;right:-5px;font-size:13px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8));}
+  .setProgress{font-size:11px;color:var(--dim);margin-top:8px;}
+  .dcGrid{margin-top:14px;overflow-x:auto;}
+  .dcRow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);}
+  .dcRow.dcHeader{border-bottom:2px solid var(--line);padding-bottom:10px;}
+  .dcTrackName{width:120px;flex:none;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .dcCells{display:flex;gap:6px;}
+  .dcMemberLabel{width:52px;flex:none;text-align:center;font-size:9px;color:var(--dim);}
+  .dcMemberLabel img{width:28px;height:28px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 3px;}
+  .dcCell{width:52px;height:52px;flex:none;border-radius:9px;border:2px solid var(--line);position:relative;overflow:hidden;background:var(--ink);}
+  .dcCell img{width:100%;height:100%;object-fit:cover;}
+  .dcCell.missing{border-style:dashed;opacity:.35;filter:grayscale(1);display:flex;align-items:center;justify-content:center;}
+  .dcCell.missing img{position:absolute;inset:0;opacity:.6;}
+  .dcCell .dcQ{position:relative;font-size:16px;font-weight:800;color:var(--dim);}
+  .dcCell .dcGrade{position:absolute;bottom:2px;right:3px;font-size:10px;font-weight:800;background:rgba(0,0,0,.7);padding:1px 4px;border-radius:5px;}
+  .empty{color:var(--dim);font-size:13px;padding:24px;text-align:center;}
+  .modal-bg{position:fixed;inset:0;background:rgba(4,6,14,.75);display:none;align-items:center;justify-content:center;z-index:50;padding:16px;}
+  .modal-bg.open{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:22px;max-width:420px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+  .modal h3{margin:0 0 4px;font-size:17px;}
+  .modal .grademeta{font-size:12px;color:var(--dim);margin-bottom:14px;}
+  .modal .previewcard{width:150px;margin:0 auto 16px;}
+  .modal .section{border-top:1px solid var(--line);padding-top:14px;margin-top:14px;}
+  .modal .section h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin:0 0 8px;}
+  .matlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;max-height:180px;overflow-y:auto;}
+  .matcard{border:2px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;position:relative;aspect-ratio:5/7;transition:transform .12s ease;}
+  .matcard:hover{transform:translateY(-2px);}
+  .matcard.selected{border-color:var(--accent);}
+  .matcard img{width:100%;height:100%;object-fit:cover;}
+  .matcard .mtag{position:absolute;top:2px;left:2px;font-size:8px;font-weight:800;background:rgba(0,0,0,.6);padding:1px 4px;border-radius:4px;}
+  .matcard .mLock{position:absolute;top:2px;right:2px;font-size:11px;background:rgba(0,0,0,.75);padding:2px 4px;border-radius:5px;cursor:pointer;z-index:4;}
+  .matcard .mLock:hover{background:rgba(94,234,212,.35);}
+  .lockBadge{position:absolute;bottom:8px;right:8px;font-size:16px;background:rgba(0,0,0,.7);padding:4px 7px;border-radius:8px;z-index:3;}
+  .closebtn{position:absolute;top:16px;right:18px;background:rgba(255,255,255,.06);border:none;color:var(--dim);font-size:20px;cursor:pointer;margin:0;padding:4px 10px;border-radius:8px;line-height:1;}
+  .actionrow{display:flex;gap:8px;}
+  .actionrow button{flex:1;}
+  a.spotifyplay{
+    display:block;text-align:center;text-decoration:none;font-weight:800;font-size:14px;
+    background:linear-gradient(135deg,#1ed760,#1DB954);color:#04220f;
+    padding:13px 18px;border-radius:14px;margin:14px 0 0;
+    box-shadow:0 6px 16px rgba(29,185,84,.3);
+  }
+  .animStage{position:relative;height:190px;margin:16px 0 6px;}
+  .animCard{position:absolute;top:50%;width:104px;aspect-ratio:5/7;border-radius:13px;overflow:hidden;
+    box-shadow:0 8px 22px rgba(0,0,0,.55);border:3px solid var(--line);left:50%;}
+  .animCard img{width:100%;height:100%;object-fit:cover;display:block;}
+  .animMain{z-index:2;transform:translate(-50%,-50%);}
+  .animMaterial{z-index:1;transform:translate(calc(-50% + 78px),-50%);transition:all .6s cubic-bezier(.34,1.56,.64,1);}
+  .animMaterial.fly{transform:translate(-50%,-50%) scale(0.12);opacity:0;}
+  .animFlash{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:104px;aspect-ratio:5/7;
+    border-radius:13px;background:radial-gradient(circle,rgba(255,255,255,.95),transparent 70%);opacity:0;pointer-events:none;z-index:3;}
+  .animFlash.flash{animation:flashBurst .35s ease-out;}
+  @keyframes flashBurst{0%{opacity:0;}40%{opacity:1;}100%{opacity:0;}}
+  .animMain.pulseSuccess{animation:pulseSuccess .9s ease;}
+  .animMain.pulseFail{animation:pulseFail .7s ease;}
+  @keyframes pulseSuccess{
+    0%,100%{box-shadow:0 8px 22px rgba(0,0,0,.55);transform:translate(-50%,-50%) scale(1);}
+    50%{box-shadow:0 0 44px rgba(94,234,212,.95),0 8px 22px rgba(0,0,0,.55);transform:translate(-50%,-50%) scale(1.08);}
+  }
+  @keyframes pulseFail{
+    0%,100%{transform:translate(-50%,-50%);box-shadow:0 8px 22px rgba(0,0,0,.55);}
+    20%{transform:translate(calc(-50% - 9px),-50%);box-shadow:0 0 34px rgba(247,140,162,.9),0 8px 22px rgba(0,0,0,.55);}
+    40%{transform:translate(calc(-50% + 9px),-50%);}
+    60%{transform:translate(calc(-50% - 6px),-50%);}
+    80%{transform:translate(calc(-50% + 6px),-50%);}
+  }
+  .animResult{text-align:center;margin-top:8px;min-height:44px;}
+  .resultPop{display:inline-block;font-size:19px;font-weight:800;padding:9px 20px;border-radius:14px;animation:resultTextPop .4s cubic-bezier(.34,1.56,.64,1);}
+  .resultPop.success{background:rgba(94,234,212,.15);color:var(--accent);border:2px solid var(--accent);}
+  .resultPop.fail{background:rgba(247,140,162,.15);color:#f78ca2;border:2px solid #f78ca2;}
+  .revealStage{width:100%;max-width:480px;display:flex;flex-direction:column;align-items:center;gap:18px;padding:20px;}
+  .revealTitle{font-family:Georgia,serif;font-size:20px;font-weight:700;color:var(--text);text-align:center;}
+  .revealCardWrap{width:220px;aspect-ratio:5/7;perspective:1000px;}
+  .revealCardInner{position:relative;width:100%;height:100%;transition:transform .6s cubic-bezier(.34,1.56,.64,1);transform-style:preserve-3d;}
+  .revealCardInner.flipped{transform:rotateY(180deg);}
+  .revealFace{position:absolute;inset:0;border-radius:18px;overflow:hidden;backface-visibility:hidden;box-shadow:0 12px 34px rgba(0,0,0,.6);}
+  .revealBack{background:linear-gradient(135deg,#2a1a3d,#171d33);border:3px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:56px;}
+  .revealFront{transform:rotateY(180deg);border:4px solid var(--c);}
+  .revealFront.b{border-color:var(--b);} .revealFront.a{border-color:var(--a);} 
+  .revealFront.s{border-color:var(--s);box-shadow:0 0 40px rgba(178,108,240,.6),0 12px 34px rgba(0,0,0,.6);}
+  .revealFront.r{border-color:var(--r);box-shadow:0 0 55px rgba(245,196,81,.75),0 12px 34px rgba(0,0,0,.6);}
+  .revealFront img{width:100%;height:100%;object-fit:cover;}
+  .revealBurst{position:absolute;inset:-40px;border-radius:50%;pointer-events:none;opacity:0;}
+  .revealBurst.go{animation:burstPulse .7s ease-out;}
+  @keyframes burstPulse{0%{opacity:0;transform:scale(.3);}40%{opacity:.9;}100%{opacity:0;transform:scale(1.6);}}
+  .revealGradeLabel{font-size:15px;font-weight:800;letter-spacing:1px;}
+  .revealCounter{font-size:12px;color:var(--dim);}
+  .revealSkip{background:transparent;border:1px solid var(--line);color:var(--dim);}
+  .revealGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px;width:100%;}
+  .revealGridCard{position:relative;aspect-ratio:5/7;border-radius:10px;overflow:hidden;border:2px solid var(--line);}
+  .revealGridCard.b{border-color:var(--b);} .revealGridCard.a{border-color:var(--a);} .revealGridCard.s{border-color:var(--s);} .revealGridCard.r{border-color:var(--r);box-shadow:0 0 14px rgba(245,196,81,.6);}
+  .revealGridCard img{width:100%;height:100%;object-fit:cover;}
+  @keyframes resultTextPop{0%{transform:scale(0.5);opacity:0;}100%{transform:scale(1);opacity:1;}}
+  .listcard{background:var(--ink2);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 6px 16px rgba(0,0,0,.25);}
+  .listcard .lhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;}
+  .listcard .ltitle{font-weight:800;font-size:15px;}
+  .listcard .lmeta{font-size:11px;color:var(--dim);margin-top:2px;}
+  .listcard .lbar{height:8px;border-radius:6px;background:var(--ink);overflow:hidden;margin:10px 0 12px;}
+  .listcard .lbar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .25s ease;}
+  .listitem{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .listitem:last-child{border-bottom:none;}
+  .listitem input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);flex:none;}
+  .listitem.done .ltext{text-decoration:line-through;color:var(--dim);}
+  .listitem .ltext{flex:1;}
+  .listitem .lrp{font-size:11px;color:var(--dim);flex:none;}
+  .listbtnrow{display:flex;gap:8px;margin-top:12px;}
+  .listbtnrow button{flex:1;margin-top:0;}
+  .bonuschip{display:inline-block;background:linear-gradient(135deg,#ffdd8a,#f5c451);color:#3a2a06;font-weight:800;font-size:10px;padding:3px 8px;border-radius:8px;margin-left:6px;}
+  .taskCatChip{display:inline-block;background:var(--ink);color:var(--accent);border:1px solid var(--accent);font-size:9px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;vertical-align:middle;}
+  .builderitem{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .builderitem .bit{flex:1;}
+  .builderitem .brp{font-size:11px;color:var(--dim);}
+  .builderitem .brm{background:none;border:none;color:#f78ca2;cursor:pointer;font-size:16px;padding:2px 6px;}
+  @media (max-width: 640px){
+    body{padding:14px 10px 60px;}
+    h1{font-size:22px;}
+    .sub{font-size:12px;}
+    .panel{padding:14px 14px 16px;border-radius:16px;margin-bottom:14px;}
+    .panel h2{font-size:12px;}
+    .topbar{gap:8px;position:static;}
+    .wallet{padding:10px 14px;font-size:13px;}
+    .row{gap:8px;}
+    .row > div{min-width:0;flex:1 1 100%;}
+    input[type=text],input[type=number],select{font-size:16px;padding:12px 12px;}
+    button{padding:13px 16px;font-size:13px;}
+    button.big{padding:16px 18px;font-size:15px;}
+    .gallery{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;}
+    .card .tag{font-size:13px;padding:4px 9px;}
+    .starcol{top:38px;}
+    .starcol .starpip{font-size:11px;}
+    .packShop, #packShop{grid-template-columns:repeat(auto-fill,minmax(150px,1fr)) !important;}
+    .modal{padding:16px;border-radius:16px;max-height:90vh;}
+    .setCard{flex-direction:column;align-items:flex-start;}
+    .setThumb{width:100%;height:120px;}
+    .dcTrackName{width:76px;font-size:10px;}
+    .dcCell,.dcMemberLabel{width:42px;}
+    .dcCell{height:42px;}
+    .dcCell .dcQ{font-size:13px;}
+    .difficulty-chips{gap:6px;}
+    .chip{min-width:70px;padding:10px 6px;font-size:12px;}
+    .deckcard{flex-wrap:wrap;}
+  }
+</style>
+</head>
+<body>
+
+<h1>Card Collection</h1>
+<div class="sub">No Spotify connection needed here. Import deck files from the Deck Builder, earn RP from tasks, open booster packs, manage your collection.</div>
+
+<div class="topbar">
+  <div class="wallet"><span class="coin">🪙</span>RP <b id="rpBalance">0</b>
+    <button class="secondary small" id="addRpBtn" type="button">+1000 RP (test)</button>
+  </div>
+  <button class="secondary small" id="exportBtn" type="button">Export collection</button>
+  <button class="secondary small" id="importBtn" type="button">Import collection</button>
+  <input type="file" id="importFile" accept="application/json" style="display:none;">
+  <span class="status" id="ioStatus" style="margin-top:0;"></span>
+</div>
+
+<div class="panel" id="cloudPanel">
+  <h2><span class="ic">☁️</span>Cloud sync</h2>
+  <div class="status" id="cloudStatus">Not connected — running on this device only (IndexedDB). Connect Firebase to sync decks and your collection across devices.</div>
+  <div id="cloudSetup">
+    <label>Firebase config (paste the whole object from your Firebase project settings)</label>
+    <input type="text" id="firebaseConfigInput" placeholder='{"apiKey":"...","projectId":"...","...":"..."}'>
+    <div class="row">
+      <button id="cloudConnectBtn" type="button">Connect</button>
+      <button class="secondary" id="cloudForgetBtn" type="button">Forget config</button>
+    </div>
+  </div>
+  <div id="cloudSignedOut" style="display:none;">
+    <div class="row">
+      <button id="cloudGoogleBtn" type="button">Sign in with Google (cross-device)</button>
+      <button class="secondary" id="cloudAnonBtn" type="button">Continue anonymously (this device only)</button>
+    </div>
+  </div>
+  <div id="cloudSignedIn" style="display:none;">
+    <button class="danger small" id="cloudSignOutBtn" type="button">Sign out</button>
+  </div>
+</div>
+
+<div class="panel" id="tasksPanel">
+  <h2><span class="ic">✅</span>Current to-do <span class="count-pill" id="taskCount">0 pending</span></h2>
+  <label>What do you need to do?</label>
+  <input type="text" id="taskText" placeholder="e.g. clear intake queue">
+  <label>Difficulty</label>
+  <div class="difficulty-chips" id="difficultyChips">
+    <div class="chip" data-d="easy">Easy<br><span style="font-weight:400;opacity:.8;">50 RP</span></div>
+    <div class="chip active" data-d="medium">Medium<br><span style="font-weight:400;opacity:.8;">150 RP</span></div>
+    <div class="chip" data-d="hard">Hard<br><span style="font-weight:400;opacity:.8;">400 RP</span></div>
+    <div class="chip" data-d="epic">Epic<br><span style="font-weight:400;opacity:.8;">1000 RP</span></div>
+  </div>
+  <button class="big" id="addTaskBtn">+ Add to to-do</button>
+  <div class="row" style="margin-top:14px;">
+    <div><label>Filter by category</label><select id="taskCategoryFilter"><option value="">All categories</option></select></div>
+  </div>
+  <div class="tracks" id="taskList" style="margin-top:8px;"></div>
+  <div class="empty" id="taskEmpty" style="display:none;">Nothing pending. Add a quick item above, or drop in a quest from your library below.</div>
+</div>
+
+<div class="panel" id="listsPanel">
+  <h2><span class="ic">📚</span>Quest library <span class="count-pill" id="listCount">0 saved</span></h2>
+  <div class="status">Build reusable quest templates, organized by category. Dropping one into your to-do copies its items over — finish the whole batch for a bonus.</div>
+  <div class="row">
+    <div><label>Filter by category</label><select id="libraryCategoryFilter"><option value="">All categories</option></select></div>
+  </div>
+  <button class="secondary big" id="newListBtn" type="button">+ New quest template</button>
+
+  <div id="listBuilder" style="display:none;margin-top:16px;border-top:1px solid var(--line);padding-top:16px;">
+    <label>Quest name</label>
+    <input type="text" id="listName" placeholder="e.g. Weekly intake cleanup">
+    <label>Category</label>
+    <input type="text" id="listCategory" placeholder="e.g. Work, Chores, Personal" list="categorySuggestions">
+    <datalist id="categorySuggestions"></datalist>
+    <label>Bonus RP for completing the whole quest</label>
+    <input type="number" id="listBonus" value="200" style="max-width:160px;">
+    <label style="margin-top:16px;">Items</label>
+    <div id="listBuilderItems"></div>
+    <div class="row" style="margin-top:8px;">
+      <div style="flex:2;"><input type="text" id="listItemText" placeholder="item text"></div>
+      <div style="flex:none;">
+        <select id="listItemDifficulty" style="width:140px;">
+          <option value="easy">Easy — 50</option>
+          <option value="medium" selected>Medium — 150</option>
+          <option value="hard">Hard — 400</option>
+          <option value="epic">Epic — 1000</option>
+        </select>
+      </div>
+      <button class="secondary" id="listAddItemBtn" type="button" style="flex:none;">+ Add item</button>
+    </div>
+    <div class="row" style="margin-top:16px;">
+      <button class="secondary" id="listCancelBtn" type="button">Cancel</button>
+      <button id="listSaveBtn" type="button">Save quest template</button>
+    </div>
+  </div>
+
+  <div id="listGrid" style="margin-top:16px;"></div>
+  <div class="empty" id="listEmpty">No quest templates yet.</div>
+</div>
+
+<div class="panel">
+  <h2><span class="ic">💿</span>Decks <span class="count-pill" id="deckCount">0 imported</span></h2>
+  <div class="status">Each deck is a separate artist/group, built with the Deck Builder app. Import as many as you want — they never mix pools with each other.</div>
+  <button id="importDeckBtn" type="button">Import deck file</button>
+  <input type="file" id="importDeckFile" accept="application/json" style="display:none;">
+  <div class="status" id="deckImportStatus"></div>
+  <div id="deckList" style="margin-top:12px;"></div>
+</div>
+
+<div class="panel">
+  <h2><span class="ic">🎁</span>Booster packs</h2>
+  <label>Pull from deck</label>
+  <select id="deckSelect"><option value="">🎲 All decks (random)</option></select>
+  <div class="gallery" id="packShop" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-top:14px;"></div>
+  <div class="status" id="pullStatus"></div>
+</div>
+
+<div class="panel">
+  <h2><span class="ic">🗂️</span>Collection <span class="count-pill" id="collCount">0 cards</span></h2>
+  <div class="row">
+    <div>
+      <label>Filter by deck</label>
+      <select id="collFilter"><option value="">All decks</option></select>
+    </div>
+    <div>
+      <label>Group by</label>
+      <select id="collGroupBy">
+        <option value="none">No grouping</option>
+        <option value="album">By album</option>
+        <option value="member">By member</option>
+      </select>
+    </div>
+    <div style="flex:none;align-self:flex-end;">
+      <button class="secondary" id="viewSetsBtn" type="button">🏆 View sets</button>
+      <button class="danger" id="clearCollBtn" type="button">Clear collection</button>
+    </div>
+  </div>
+  <div class="gallery" id="gallery"></div>
+  <div class="empty" id="galleryEmpty">No cards yet — import a deck, then open a booster pack.</div>
+</div>
+
+<div class="panel" id="setsPanel" style="display:none;">
+  <h2><span class="ic">🏆</span>Sets — collect every member per album, all at R grade</h2>
+  <div class="status">Each album from your decks is a set. Fill it in with any grade to start, then push every member's card to R for the full-set glow.</div>
+  <div id="setsGrid" style="margin-top:14px;"></div>
+  <div class="empty" id="setsEmpty">Import a deck to see its sets here.</div>
+</div>
+
+<div class="modal-bg" id="albumModalBg">
+  <div class="modal" style="max-width:640px;">
+    <button class="closebtn" id="albumModalClose">×</button>
+    <div id="albumModalBody"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="packRevealBg" style="z-index:80;">
+  <div class="revealStage" id="revealStage"></div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <button class="closebtn" id="modalClose">×</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+// ---------------- CloudStore (portable Firebase sync module — see cloud-store.js for the standalone reference copy) ----------------
+window.CloudStore = (function () {
+  let app = null, auth = null, db = null;
+  let currentUser = null;
+  const authListeners = [];
+  function init(firebaseConfig) {
+    app = firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    return new Promise((resolve) => {
+      auth.onAuthStateChanged((user) => {
+        currentUser = user;
+        authListeners.forEach((cb) => cb(user));
+        resolve(user);
+      });
+    });
+  }
+  function onAuthChange(cb) { authListeners.push(cb); if (currentUser !== null) cb(currentUser); }
+  async function signInWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const result = await auth.signInWithPopup(provider);
+    return result.user;
+  }
+  async function signInAnonymously() { const result = await auth.signInAnonymously(); return result.user; }
+  async function signOut() { await auth.signOut(); }
+  function uid() { return currentUser ? currentUser.uid : null; }
+  function userLabel() { if (!currentUser) return null; return currentUser.isAnonymous ? 'Anonymous (this device only)' : (currentUser.email || currentUser.uid); }
+  async function getAll(path) {
+    const snap = await db.collection(path).get();
+    return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+  }
+  async function put(path, obj) {
+    if (!obj.id) obj.id = db.collection(path).doc().id;
+    await db.collection(path).doc(obj.id).set(obj);
+    return obj;
+  }
+  async function del(path, id) { await db.collection(path).doc(id).delete(); }
+  async function clearCollection(path) {
+    const snap = await db.collection(path).get();
+    if (snap.empty) return;
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 450) {
+      const batch = db.batch();
+      docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+  async function getMeta(path, key, fallback) {
+    const doc = await db.collection(path).doc('_meta').get();
+    return doc.exists && doc.data()[key] !== undefined ? doc.data()[key] : fallback;
+  }
+  async function setMeta(path, key, value) { await db.collection(path).doc('_meta').set({ [key]: value }, { merge: true }); }
+  function watch(path, callback) {
+    return db.collection(path).onSnapshot((snap) => { callback(snap.docs.map((d) => Object.assign({ id: d.id }, d.data()))); });
+  }
+  function watchDoc(path, id, callback) {
+    return db.collection(path).doc(id).onSnapshot((doc) => { callback(doc.exists ? Object.assign({ id: doc.id }, doc.data()) : null); });
+  }
+  return { init, onAuthChange, signInWithGoogle, signInAnonymously, signOut, uid, userLabel, getAll, put, del, clearCollection, getMeta, setMeta, watch, watchDoc };
+})();
+
+const $ = id => document.getElementById(id);
+const GRADES = ['C','B','A','S','R'];
+const GRADE_COLOR = {C:'#8a93ad',B:'#5fae6f',A:'#5b9bf0',S:'#b26cf0',R:'#f5c451'};
+const UPGRADE_COST = {C:5000,B:10000,A:20000,S:0};
+
+// ---------------- IndexedDB ----------------
+let db;
+function openDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('CardCollectionDB', 2);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains('decks')) d.createObjectStore('decks', {keyPath:'deckId'});
+      if(!d.objectStoreNames.contains('cards')) d.createObjectStore('cards', {keyPath:'id'});
+      if(!d.objectStoreNames.contains('tasks')) d.createObjectStore('tasks', {keyPath:'id'});
+      if(!d.objectStoreNames.contains('lists')) d.createObjectStore('lists', {keyPath:'id'});
+      if(!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', {keyPath:'key'});
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror = e => reject(e.target.error);
+  });
+}
+function idbAllLocal(store){
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store,'readonly').objectStore(store).getAll();
+    tx.onsuccess = () => resolve(tx.result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function idbPutLocal(store, obj){
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store,'readwrite').objectStore(store).put(obj);
+    tx.onsuccess = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function idbDelLocal(store, id){
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store,'readwrite').objectStore(store).delete(id);
+    tx.onsuccess = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function idbClearLocal(store){
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store,'readwrite').objectStore(store).clear();
+    tx.onsuccess = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function getMetaLocal(key, fallback){
+  const tx = db.transaction('meta','readonly').objectStore('meta');
+  return new Promise(resolve => {
+    const req = tx.get(key);
+    req.onsuccess = () => resolve(req.result ? req.result.value : fallback);
+    req.onerror = () => resolve(fallback);
+  });
+}
+async function setMetaLocal(key, value){ await idbPutLocal('meta', {key, value}); }
+
+// ---------------- cloud-aware storage router ----------------
+// Same function names/signatures the rest of the app already calls everywhere.
+// When Firebase is connected + signed in, these route to Firestore instead of
+// IndexedDB. 'decks' is shared (not scoped to a user); everything else is
+// personal, scoped under users/{uid}/... See cloud-store.js for CloudStore itself.
+let cloudActive = false;
+let cloudUid = null;
+function cloudPath(store){
+  return store === 'decks' ? 'decks' : ('users/' + cloudUid + '/' + store);
+}
+async function idbAll(store){
+  if(cloudActive) return CloudStore.getAll(cloudPath(store));
+  return idbAllLocal(store);
+}
+async function idbPut(store, obj){
+  if(cloudActive) return CloudStore.put(cloudPath(store), obj);
+  return idbPutLocal(store, obj);
+}
+async function idbDel(store, id){
+  if(cloudActive) return CloudStore.del(cloudPath(store), id);
+  return idbDelLocal(store, id);
+}
+async function idbClear(store){
+  if(cloudActive) return CloudStore.clearCollection(cloudPath(store));
+  return idbClearLocal(store);
+}
+async function getMeta(key, fallback){
+  if(cloudActive) return CloudStore.getMeta(cloudPath('meta'), key, fallback);
+  return getMetaLocal(key, fallback);
+}
+async function setMeta(key, value){
+  if(cloudActive) return CloudStore.setMeta(cloudPath('meta'), key, value);
+  return setMetaLocal(key, value);
+}
+
+// ---------------- state ----------------
+let decks = [];      // [{deckId, artistName, members:[], pool:[], importedAt}]
+let cards = [];
+let tasks = [];
+let rp = 0;
+const DIFFICULTY_RP = {easy:50, medium:150, hard:400, epic:1000};
+
+window.CardForge = { addRP: async (amount) => { rp += amount; await setMeta('rp', rp); renderWallet(); } };
+
+// ---------------- cloud sync wiring ----------------
+let deckWatchUnsub = null;
+function loadFirebaseConfig(){
+  try{ return JSON.parse(localStorage.getItem('cf_firebase_config') || 'null'); }catch(e){ return null; }
+}
+function updateCloudUI(){
+  const signedIn = cloudActive && CloudStore.uid();
+  $('cloudSetup').style.display = cloudActive ? 'none' : 'block';
+  $('cloudSignedOut').style.display = (cloudActive && !signedIn) ? 'block' : 'none';
+  $('cloudSignedIn').style.display = signedIn ? 'block' : 'none';
+  if(signedIn){
+    $('cloudStatus').textContent = 'Connected — signed in as ' + CloudStore.userLabel() + '. Decks and your collection sync live.';
+  } else if(cloudActive){
+    $('cloudStatus').textContent = 'Connected to Firebase — sign in to sync your personal collection (decks are visible either way).';
+  } else {
+    $('cloudStatus').textContent = 'Not connected — running on this device only (IndexedDB). Connect Firebase to sync decks and your collection across devices.';
+  }
+}
+async function connectFirebase(config){
+  try{
+    await CloudStore.init(config);
+    localStorage.setItem('cf_firebase_config', JSON.stringify(config));
+    cloudActive = true;
+    CloudStore.onAuthChange(async (user) => {
+      cloudUid = user ? user.uid : null;
+      updateCloudUI();
+      if(user){
+        // signed in: cloud becomes the source of truth for personal data, and for the shared deck list
+        cards = await idbAll('cards');
+        tasks = await idbAll('tasks');
+        lists = await idbAll('lists');
+        rp = await getMeta('rp', 0);
+        renderTasks(); renderLists(); renderGallery(); renderWallet();
+        if(deckWatchUnsub) deckWatchUnsub();
+        deckWatchUnsub = CloudStore.watch('decks', liveDecks => {
+          // deck docs from Firestore don't carry pool inline (pool is a subcollection) —
+          // keep any already-fetched pool array around across live updates
+          decks = liveDecks.map(d => {
+            const existing = decks.find(x => x.deckId === d.deckId);
+            return Object.assign({ pool: existing ? existing.pool : [] }, d);
+          });
+          renderDecks(); renderDeckSelect(); renderCollFilter();
+          decks.forEach(d => { if(!d.pool || d.pool.length === 0) refreshDeckPool(d.deckId); });
+        });
+      }
+    });
+    updateCloudUI();
+  }catch(e){
+    $('cloudStatus').textContent = 'Connect failed: ' + e.message;
+  }
+}
+async function refreshDeckPool(deckId){
+  const pool = await CloudStore.getAll('decks/' + deckId + '/pool');
+  const d = decks.find(x => x.deckId === deckId);
+  if(d){ d.pool = pool; renderDeckSelect(); renderPackShop(); }
+}
+function parseFirebaseConfig(text){
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^\s*(export\s+default\s+|const\s+\w+\s*=\s*|let\s+\w+\s*=\s*|var\s+\w+\s*=\s*)/,'');
+  cleaned = cleaned.replace(/;\s*$/,'');
+  try{ return JSON.parse(cleaned); }
+  catch(e){ return Function('"use strict"; return (' + cleaned + ')')(); }
+}
+$('cloudConnectBtn').addEventListener('click', () => {
+  let config;
+  try{ config = parseFirebaseConfig($('firebaseConfigInput').value); }
+  catch(e){ $('cloudStatus').textContent = 'Could not read that as a config object — paste it exactly as Firebase gave it to you (the whole "const firebaseConfig = {...}" block is fine).'; return; }
+  connectFirebase(config);
+});
+$('cloudForgetBtn').addEventListener('click', () => {
+  localStorage.removeItem('cf_firebase_config');
+  $('firebaseConfigInput').value = '';
+  $('cloudStatus').textContent = 'Forgot saved config. Reload the page to fully disconnect.';
+});
+$('cloudGoogleBtn').addEventListener('click', async () => {
+  try{ await CloudStore.signInWithGoogle(); }catch(e){ $('cloudStatus').textContent = 'Sign-in failed: ' + e.message; }
+});
+$('cloudAnonBtn').addEventListener('click', async () => {
+  try{ await CloudStore.signInAnonymously(); }catch(e){ $('cloudStatus').textContent = 'Sign-in failed: ' + e.message; }
+});
+$('cloudSignOutBtn').addEventListener('click', async () => {
+  await CloudStore.signOut();
+  cloudUid = null;
+  if(deckWatchUnsub){ deckWatchUnsub(); deckWatchUnsub = null; }
+  updateCloudUI();
+});
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ---------------- current to-do ----------------
+function distinctCategories(){
+  const cats = new Set();
+  lists.forEach(l => { if(l.category) cats.add(l.category); });
+  tasks.forEach(t => { if(t.category) cats.add(t.category); });
+  return Array.from(cats).sort();
+}
+function refreshCategoryDropdowns(){
+  const cats = distinctCategories();
+  const optsHtml = '<option value="">All categories</option>' + cats.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  const prevTask = $('taskCategoryFilter').value, prevLib = $('libraryCategoryFilter').value;
+  $('taskCategoryFilter').innerHTML = optsHtml;
+  $('libraryCategoryFilter').innerHTML = optsHtml;
+  if(cats.includes(prevTask)) $('taskCategoryFilter').value = prevTask;
+  if(cats.includes(prevLib)) $('libraryCategoryFilter').value = prevLib;
+  $('categorySuggestions').innerHTML = cats.map(c=>`<option value="${escapeHtml(c)}">`).join('');
+}
+function renderTasks(){
+  refreshCategoryDropdowns();
+  const filter = $('taskCategoryFilter').value;
+  const visible = filter ? tasks.filter(t => t.category === filter) : tasks;
+  const list = $('taskList');
+  list.innerHTML = '';
+  $('taskCount').textContent = visible.length + ' pending' + (filter ? '' : '');
+  $('taskEmpty').style.display = visible.length ? 'none' : 'block';
+  visible.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'track';
+    const sourceTag = t.sourceListName ? ` · from “${escapeHtml(t.sourceListName)}”` : '';
+    const catTag = t.category ? `<span class="taskCatChip">${escapeHtml(t.category)}</span>` : '';
+    row.innerHTML = `
+      <input type="checkbox" class="tcomplete" data-id="${t.id}">
+      <div class="meta"><div class="t">${escapeHtml(t.text)} ${catTag}</div><div class="a">${t.difficulty} · ${DIFFICULTY_RP[t.difficulty]} RP${sourceTag}</div></div>
+    `;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('.tcomplete').forEach(chk => chk.addEventListener('change', async e => {
+    if(!e.target.checked) return;
+    const t = tasks.find(x=>x.id===e.target.dataset.id);
+    if(!t) return;
+    tasks = tasks.filter(x=>x.id!==t.id);
+    await idbDel('tasks', t.id);
+    rp += DIFFICULTY_RP[t.difficulty];
+
+    // if this was the last pending item from a dropped-in quest batch, pay out the bonus
+    if(t.batchId){
+      const remaining = tasks.filter(x => x.batchId === t.batchId).length;
+      if(remaining === 0 && t.batchBonusRP){
+        rp += t.batchBonusRP;
+        alert('🎉 Quest complete: "' + t.sourceListName + '"! Bonus +' + t.batchBonusRP + ' RP');
+      }
+    }
+    await setMeta('rp', rp);
+    renderWallet(); renderTasks();
+  }));
+}
+$('taskCategoryFilter').addEventListener('change', renderTasks);
+let selectedDifficulty = 'medium';
+document.querySelectorAll('#difficultyChips .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#difficultyChips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    selectedDifficulty = chip.dataset.d;
+  });
+});
+async function addTaskFromInput(){
+  const text = $('taskText').value.trim();
+  if(!text) return;
+  const difficulty = selectedDifficulty;
+  const t = {id:'t_'+Date.now()+Math.random().toString(36).slice(2,6), text, difficulty};
+  tasks.push(t);
+  await idbPut('tasks', t);
+  $('taskText').value = '';
+  renderTasks();
+}
+$('addTaskBtn').addEventListener('click', addTaskFromInput);
+$('taskText').addEventListener('keydown', e => { if(e.key === 'Enter') addTaskFromInput(); });
+
+// ---------------- quest library ----------------
+let lists = [];
+let builderItems = [];
+
+function renderListBuilderItems(){
+  const wrap = $('listBuilderItems');
+  wrap.innerHTML = '';
+  if(builderItems.length === 0){ wrap.innerHTML = '<div class="empty" style="padding:10px;">No items yet — add some below.</div>'; return; }
+  builderItems.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = 'builderitem';
+    row.innerHTML = `<div class="bit">${escapeHtml(it.text)}</div><div class="brp">${it.difficulty} · ${DIFFICULTY_RP[it.difficulty]} RP</div><button class="brm" type="button">✕</button>`;
+    row.querySelector('.brm').addEventListener('click', () => { builderItems.splice(i,1); renderListBuilderItems(); });
+    wrap.appendChild(row);
+  });
+}
+$('newListBtn').addEventListener('click', () => {
+  builderItems = [];
+  $('listName').value = ''; $('listCategory').value = ''; $('listBonus').value = 200; $('listItemText').value = '';
+  renderListBuilderItems();
+  $('listBuilder').style.display = 'block';
+});
+$('listCancelBtn').addEventListener('click', () => { $('listBuilder').style.display = 'none'; });
+$('listAddItemBtn').addEventListener('click', () => {
+  const text = $('listItemText').value.trim();
+  if(!text) return;
+  builderItems.push({id:'li_'+Date.now()+Math.random().toString(36).slice(2,6), text, difficulty:$('listItemDifficulty').value});
+  $('listItemText').value = '';
+  renderListBuilderItems();
+});
+$('listItemText').addEventListener('keydown', e => { if(e.key==='Enter') $('listAddItemBtn').click(); });
+$('listSaveBtn').addEventListener('click', async () => {
+  const name = $('listName').value.trim();
+  if(!name){ alert('Give the quest a name.'); return; }
+  if(builderItems.length===0){ alert('Add at least one item.'); return; }
+  const list = {
+    id:'l_'+Date.now()+Math.random().toString(36).slice(2,6),
+    name, category: $('listCategory').value.trim() || 'Uncategorized',
+    bonusRP: parseInt($('listBonus').value)||0,
+    items: builderItems.slice(),
+    createdAt: Date.now()
+  };
+  lists.push(list);
+  await idbPut('lists', list);
+  $('listBuilder').style.display = 'none';
+  renderLists();
+});
+
+async function dropListIntoTodo(listId){
+  const list = lists.find(l => l.id === listId);
+  if(!list) return;
+  const batchId = 'batch_'+Date.now()+Math.random().toString(36).slice(2,6);
+  for(const item of list.items){
+    const t = {
+      id:'t_'+Date.now()+Math.random().toString(36).slice(2,6),
+      text: item.text, difficulty: item.difficulty, category: list.category,
+      sourceListId: list.id, sourceListName: list.name,
+      batchId, batchBonusRP: list.bonusRP
+    };
+    tasks.push(t);
+    await idbPut('tasks', t);
+  }
+  renderTasks();
+  alert('Dropped "' + list.name + '" into your to-do — ' + list.items.length + ' items added' + (list.bonusRP ? ', +' + list.bonusRP + ' RP bonus when you clear all of them' : '') + '.');
+}
+
+function renderLists(){
+  const cats = distinctCategories();
+  refreshCategoryDropdowns();
+  const filter = $('libraryCategoryFilter').value;
+  const visible = filter ? lists.filter(l => l.category === filter) : lists;
+  $('listCount').textContent = lists.length + ' saved';
+  const grid = $('listGrid');
+  grid.innerHTML = '';
+  $('listEmpty').style.display = visible.length ? 'none' : 'block';
+  visible.forEach(list => {
+    const totalRP = list.items.reduce((s,it)=>s+DIFFICULTY_RP[it.difficulty],0) + (list.bonusRP||0);
+    const el = document.createElement('div');
+    el.className = 'listcard';
+    el.innerHTML = `
+      <div class="lhead">
+        <div><div class="ltitle">${escapeHtml(list.name)} <span class="bonuschip" style="background:var(--ink);color:var(--accent);border:1px solid var(--accent);">${escapeHtml(list.category||'Uncategorized')}</span></div>
+        <div class="lmeta">${list.items.length} items · up to ${totalRP} RP total (incl. ${list.bonusRP||0} RP bonus)</div></div>
+      </div>
+      <div class="listbtnrow">
+        <button data-act="drop" type="button" style="flex:2;">🎯 Drop into to-do</button>
+        <button class="danger small" data-act="delete" type="button">Delete</button>
+      </div>
+    `;
+    el.querySelector('[data-act="drop"]').addEventListener('click', () => dropListIntoTodo(list.id));
+    el.querySelector('[data-act="delete"]').addEventListener('click', async () => {
+      if(!confirm('Delete quest template "' + list.name + '"? (Copies already dropped into your to-do are unaffected.)')) return;
+      lists = lists.filter(x=>x.id!==list.id);
+      await idbDel('lists', list.id);
+      renderLists();
+    });
+    grid.appendChild(el);
+  });
+}
+$('libraryCategoryFilter').addEventListener('change', renderLists);
+
+function renderDecks(){
+  $('deckCount').textContent = decks.length + ' imported';
+  const list = $('deckList');
+  list.innerHTML = '';
+  if(decks.length===0){ list.innerHTML = '<div class="empty">No decks imported yet.</div>'; }
+  decks.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'deckcard';
+    el.innerHTML = `
+      <div class="dinfo"><div class="davatar">${escapeHtml((d.artistName||'?').charAt(0).toUpperCase())}</div>
+      <div><div class="dn">${escapeHtml(d.artistName)}</div><div class="dm">${d.members.length} members · ${d.pool.length} pool entries</div></div></div>
+      <button class="danger small" data-id="${d.deckId}" type="button">Remove</button>
+    `;
+    el.querySelector('button').addEventListener('click', async () => {
+      if(!confirm('Remove deck "' + d.artistName + '"? Cards you already own from it stay in your collection.')) return;
+      decks = decks.filter(x=>x.deckId!==d.deckId);
+      await idbDel('decks', d.deckId);
+      renderDecks(); renderDeckSelect(); renderCollFilter();
+    });
+    list.appendChild(el);
+  });
+}
+function renderDeckSelect(){
+  const sel = $('deckSelect');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">🎲 All decks (random)</option>';
+  decks.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.deckId; opt.textContent = d.artistName + ' only (' + d.pool.length + ')';
+    sel.appendChild(opt);
+  });
+  sel.value = decks.some(d=>d.deckId===prev) ? prev : '';
+  renderPackShop();
+}
+function renderCollFilter(){
+  const sel = $('collFilter');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All decks</option>';
+  decks.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.deckId; opt.textContent = d.artistName;
+    sel.appendChild(opt);
+  });
+  sel.value = decks.some(d=>d.deckId===prev) ? prev : '';
+}
+$('importDeckBtn').addEventListener('click', () => $('importDeckFile').click());
+$('importDeckFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; if(!file) return;
+  const text = await file.text();
+  let payload;
+  try{ payload = JSON.parse(text); }catch(err){ $('deckImportStatus').textContent = 'Invalid deck file.'; return; }
+  if(payload.kind !== 'cardforge-deck'){ $('deckImportStatus').textContent = 'This does not look like a deck file exported from the Deck Builder.'; return; }
+  const existing = decks.find(d => d.deckId === payload.deckId);
+  if(existing && !confirm('A deck "' + existing.artistName + '" with this ID already exists. Overwrite it?')) return;
+  const deck = {
+    deckId: payload.deckId, artistName: payload.artistName,
+    members: payload.members || [], pool: payload.pool || [],
+    importedAt: Date.now()
+  };
+  decks = decks.filter(d => d.deckId !== deck.deckId);
+  decks.push(deck);
+  if(cloudActive){
+    // pool goes in its own subcollection so the deck doc never approaches Firestore's 1MB limit
+    $('deckImportStatus').textContent = 'Publishing to cloud...';
+    const { pool, ...deckMeta } = deck;
+    await CloudStore.put('decks', deckMeta);
+    let done = 0;
+    for(const entry of pool){
+      await CloudStore.put('decks/' + deck.deckId + '/pool', entry);
+      done++;
+      if(done % 50 === 0) $('deckImportStatus').textContent = 'Publishing to cloud... ' + done + ' / ' + pool.length;
+    }
+  } else {
+    await idbPutLocal('decks', deck);
+  }
+  renderDecks(); renderDeckSelect(); renderCollFilter();
+  $('deckImportStatus').textContent = 'Imported "' + deck.artistName + '" — ' + deck.members.length + ' members, ' + deck.pool.length + ' pool entries' + (cloudActive ? ' (published to cloud).' : '.');
+  $('importDeckFile').value = '';
+});
+
+// ---------------- image helpers ----------------
+function loadImg(src){
+  return new Promise((resolve,reject) => {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img); img.onerror = reject; img.src = src;
+  });
+}
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+  const words = text.split(' '); let line=''; const lines=[];
+  for(const w of words){
+    const test = line ? line+' '+w : w;
+    if(ctx.measureText(test).width > maxWidth && line){ lines.push(line); line=w; } else line=test;
+  }
+  lines.push(line);
+  const startY = y - (lines.length-1)*lineHeight;
+  lines.forEach((l,i) => ctx.fillText(l, x, startY + i*lineHeight));
+}
+let fontReady = null;
+async function ensureCardFont(){
+  if(fontReady) return fontReady;
+  fontReady = (async () => {
+    try{
+      await Promise.race([
+        Promise.all([
+          document.fonts.load('900 25px Poppins'),
+          document.fonts.load('800 17px Poppins'),
+          document.fonts.load('700 15px Poppins')
+        ]),
+        new Promise(r => setTimeout(r, 1500)) // don't let a slow/offline font block card baking forever
+      ]);
+    }catch(e){}
+  })();
+  return fontReady;
+}
+function memberPhoto(member){
+  if(!member) return null;
+  const pool = (member.imgs && member.imgs.length) ? member.imgs : (member.img ? [member.img] : []);
+  if(pool.length === 0) return null;
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+function drawSparkle(ctx, x, y, size, color){
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0,-size); ctx.lineTo(size*0.22,-size*0.22); ctx.lineTo(size,0);
+  ctx.lineTo(size*0.22,size*0.22); ctx.lineTo(0,size); ctx.lineTo(-size*0.22,size*0.22);
+  ctx.lineTo(-size,0); ctx.lineTo(-size*0.22,-size*0.22);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+async function bakeArt(track, member, grade){
+  await ensureCardFont();
+  const W=340,H=476;
+  const canvas = document.createElement('canvas'); canvas.width=W; canvas.height=H;
+  const ctx = canvas.getContext('2d');
+  const gColor = (grade && GRADE_COLOR[grade]) ? GRADE_COLOR[grade] : '#5eead4';
+  const GV = {
+    C:{glowMult:0.85, ringAlpha:'40', titleSize:22, nameSize:16,   sparkles:0, shadowBlur:3},
+    B:{glowMult:1.0,  ringAlpha:'55', titleSize:23, nameSize:16.5, sparkles:0, shadowBlur:5},
+    A:{glowMult:1.2,  ringAlpha:'70', titleSize:24, nameSize:17.5, sparkles:1, shadowBlur:8},
+    S:{glowMult:1.5,  ringAlpha:'95', titleSize:27, nameSize:18.5, sparkles:2, shadowBlur:16},
+    R:{glowMult:1.85, ringAlpha:'ee', titleSize:30, nameSize:20,   sparkles:4, shadowBlur:24}
+  };
+  const gv = GV[grade] || GV.C;
+  const isTopTier = grade === 'S' || grade === 'R';
+
+  ctx.fillStyle = '#111'; ctx.fillRect(0,0,W,H);
+  if(track.imageUrl){
+    try{
+      const bg = await loadImg(track.imageUrl);
+      const scale = Math.max(W/bg.width, H/bg.height);
+      const sw=W/scale, sh=H/scale, sx=(bg.width-sw)/2, sy=(bg.height-sh)/2;
+      ctx.drawImage(bg, sx, sy, sw, sh, 0, 0, W, H);
+    }catch(e){}
+  }
+  ctx.fillStyle = 'rgba(10,10,20,0.32)'; ctx.fillRect(0,0,W,H);
+  const topGrad = ctx.createLinearGradient(0,0,0,H*0.2);
+  topGrad.addColorStop(0,'rgba(0,0,0,0.5)'); topGrad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle = topGrad; ctx.fillRect(0,0,W,H*0.2);
+
+  // title plate — deliberately thin now (~1/8 of card height), just enough for legibility,
+  // so the title sits low and close to the edge instead of eating almost half the card
+  const plateTop = H*0.875;
+  // light assist gradient above the thin plate, so a 2-line title still has some contrast
+  // protection even though the strong opaque plate itself is now just the bottom ~1/8
+  const assistGrad = ctx.createLinearGradient(0,H*0.7,0,plateTop);
+  assistGrad.addColorStop(0,'rgba(8,8,16,0)'); assistGrad.addColorStop(1,'rgba(8,8,16,0.55)');
+  ctx.fillStyle = assistGrad; ctx.fillRect(0,H*0.7,W,plateTop-H*0.7);
+  const plateGrad = ctx.createLinearGradient(0,plateTop,0,H);
+  plateGrad.addColorStop(0,'rgba(8,8,16,0)'); plateGrad.addColorStop(0.35,'rgba(8,8,16,0.9)'); plateGrad.addColorStop(1,'rgba(8,8,16,0.98)');
+  ctx.fillStyle = plateGrad; ctx.fillRect(0,plateTop,W,H-plateTop);
+
+  // member portrait — large, centered hero shot, glow/sparkle intensity scales continuously with grade
+  const photo = memberPhoto(member);
+  const cx = W/2, cy = H*0.29, r = 88;
+  if(photo){
+    try{
+      const face = await loadImg(photo);
+      const glowR = r * (1.15 + gv.glowMult*0.3);
+      const glow = ctx.createRadialGradient(cx,cy,r*0.8,cx,cy,glowR);
+      glow.addColorStop(0, gColor + gv.ringAlpha);
+      glow.addColorStop(1, gColor + '00');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx,cy,glowR,0,Math.PI*2); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.closePath(); ctx.clip();
+      const scale = Math.max((r*2)/face.width,(r*2)/face.height);
+      const fw=face.width*scale, fh=face.height*scale;
+      ctx.drawImage(face, cx-fw/2, cy-fh/2, fw, fh);
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.lineWidth=5; ctx.strokeStyle='rgba(255,255,255,0.95)'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx,cy,r+4,0,Math.PI*2); ctx.lineWidth=2+gv.glowMult; ctx.strokeStyle=gColor; ctx.stroke();
+      const sparklePositions = [
+        [cx+r*0.78, cy-r*0.78, 12], [cx-r*0.82, cy+r*0.7, 8],
+        [cx+r*0.6, cy+r*0.85, 9], [cx-r*0.6, cy-r*0.9, 7]
+      ];
+      for(let i=0;i<gv.sparkles;i++){
+        const [sx2,sy2,sz] = sparklePositions[i];
+        drawSparkle(ctx, sx2, sy2, sz, i%2===0 ? gColor : '#ffffff');
+      }
+    }catch(e){}
+  }
+
+  // member name — bold display font, subtle gradient + stroke for a premium photocard feel
+  if(member && member.name){
+    ctx.textAlign='center';
+    ctx.font='800 ' + gv.nameSize + 'px Poppins, Segoe UI, sans-serif';
+    const nameY = cy + r + 32;
+    const nameGrad = ctx.createLinearGradient(W/2-70,0,W/2+70,0);
+    nameGrad.addColorStop(0,'#ffffff'); nameGrad.addColorStop(1,gColor);
+    ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=8;
+    ctx.lineWidth=3; ctx.strokeStyle='rgba(8,8,16,0.8)';
+    ctx.strokeText(member.name.toUpperCase(), W/2, nameY);
+    ctx.fillStyle = nameGrad;
+    ctx.fillText(member.name.toUpperCase(), W/2, nameY);
+    ctx.shadowBlur=0;
+    ctx.textAlign='left';
+  }
+
+  // title block — sits low in the thin plate now, font size itself scales with rarity
+  ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  const titleGrad = ctx.createLinearGradient(0,H*0.86,0,H*0.96);
+  titleGrad.addColorStop(0,'#ffffff'); titleGrad.addColorStop(1, isTopTier ? gColor : '#e9ecf7');
+  ctx.font='900 ' + gv.titleSize + 'px Poppins, Segoe UI, sans-serif';
+  ctx.shadowColor = isTopTier ? gColor : 'rgba(0,0,0,0.6)'; ctx.shadowBlur = gv.shadowBlur;
+  ctx.fillStyle = titleGrad;
+  wrapTextCenter(ctx, track.name, W/2, H-38, W-30, gv.titleSize+3);
+  ctx.shadowBlur=0;
+  ctx.font='700 12px Poppins, Segoe UI, sans-serif'; ctx.fillStyle='rgba(255,255,255,0.78)';
+  wrapTextCenter(ctx, track.album, W/2, H-12, W-50, 16);
+  ctx.textAlign='left';
+  return canvas.toDataURL('image/png');
+}
+function wrapTextCenter(ctx, text, cx, y, maxWidth, lineHeight){
+  const words = text.split(' '); let line=''; const lines=[];
+  for(const w of words){
+    const test = line ? line+' '+w : w;
+    if(ctx.measureText(test).width > maxWidth && line){ lines.push(line); line=w; } else line=test;
+  }
+  lines.push(line);
+  const maxLines = 3;
+  const shown = lines.slice(0, maxLines);
+  if(lines.length > maxLines) shown[maxLines-1] = shown[maxLines-1].replace(/\s*\S*$/,'') + '…';
+  const startY = y - (shown.length-1)*lineHeight;
+  shown.forEach((l,i) => ctx.fillText(l, cx, startY + i*lineHeight));
+}
+
+// ---------------- booster packs ----------------
+const PACKS = [
+  {id:'regular5', tier:'Regular', size:5, cost:250,
+    weights:{C:60,B:35,A:4,S:0.9,R:0.1}, guaranteeGrade:'B', guaranteeMin:1,
+    desc:'Mostly C/B, a shot at A, a whisper of S.'},
+  {id:'regular10', tier:'Regular', size:10, cost:450,
+    weights:{C:60,B:35,A:4,S:0.9,R:0.1}, guaranteeGrade:'B', guaranteeMin:2,
+    desc:'Same odds as the ×5, double the guaranteed B+.'},
+  {id:'premium5', tier:'Premium', size:5, cost:1000,
+    weights:{B:55,A:35,S:9,R:1}, guaranteeGrade:'S', guaranteeMin:1,
+    desc:'No C cards. Guaranteed at least one S.'},
+  {id:'premium10', tier:'Premium', size:10, cost:1800,
+    weights:{B:55,A:35,S:9,R:1}, guaranteeGrade:'S', guaranteeMin:2,
+    desc:'No C cards. Guaranteed at least two S.'},
+  {id:'royal5', tier:'Royal', size:5, cost:3000,
+    weights:{A:50,S:40,R:10}, guaranteeGrade:'R', guaranteeMin:1,
+    desc:'A/S/R only. Guaranteed at least one R.'},
+  {id:'royal10', tier:'Royal', size:10, cost:5500,
+    weights:{A:50,S:40,R:10}, guaranteeGrade:'R', guaranteeMin:2,
+    desc:'A/S/R only. Guaranteed at least two R.'}
+];
+const TIER_COLOR = {Regular:'var(--c)', Premium:'var(--s)', Royal:'var(--r)'};
+function gradeIdx(g){ return GRADES.indexOf(g); }
+function rollWeighted(weights){
+  const total = Object.values(weights).reduce((a,b)=>a+b,0);
+  let roll = Math.random()*total;
+  for(const g of Object.keys(weights)){ if(roll < weights[g]) return g; roll -= weights[g]; }
+  return Object.keys(weights)[0];
+}
+function buildActivePool(){
+  const selected = $('deckSelect').value;
+  const source = selected ? decks.filter(d=>d.deckId===selected) : decks;
+  const activePool = [];
+  source.forEach(d => d.pool.forEach(p => activePool.push(Object.assign({}, p, {__deckId: d.deckId}))));
+  return activePool;
+}
+
+function renderPackShop(){
+  const shop = $('packShop');
+  shop.innerHTML = '';
+  const activePool = buildActivePool();
+  const disabled = activePool.length === 0;
+  const TIER_ICON = {Regular:'🎴', Premium:'💎', Royal:'👑'};
+  PACKS.forEach(pack => {
+    const oddsStr = Object.entries(pack.weights).map(([g,w]) => g+' '+w+'%').join(' · ');
+    const el = document.createElement('div');
+    el.className = 'packcard';
+    el.innerHTML = `
+      <div class="pbanner" style="background:linear-gradient(135deg, ${TIER_COLOR[pack.tier]}22, transparent);">
+        <div class="picon">${TIER_ICON[pack.tier]}</div>
+        <div class="ptier" style="color:${TIER_COLOR[pack.tier]}">${pack.tier} · ×${pack.size}</div>
+        <div class="ptitle">${pack.cost.toLocaleString()} RP</div>
+      </div>
+      <div class="pbody">
+        <div class="pdesc">${pack.desc}</div>
+        <div class="podds">${oddsStr}<br>Guaranteed ${pack.guaranteeMin}× ${pack.guaranteeGrade}+</div>
+        <button data-id="${pack.id}" ${disabled?'disabled':''}>Open pack</button>
+      </div>
+    `;
+    el.querySelector('button').addEventListener('click', () => openPack(pack.id));
+    shop.appendChild(el);
+  });
+}
+$('deckSelect').addEventListener('change', renderPackShop);
+
+async function showPackReveal(pack, newCards){
+  const stage = $('revealStage');
+  $('packRevealBg').classList.add('open');
+
+  for(let i=0;i<newCards.length;i++){
+    const c = newCards[i];
+    const g = c.grade.toLowerCase();
+    const isTopTier = c.grade === 'S' || c.grade === 'R';
+    stage.innerHTML = `
+      <div class="revealTitle">Opening ${pack.tier} ×${pack.size}</div>
+      <div class="revealCounter">${i+1} / ${newCards.length}</div>
+      <div class="revealCardWrap">
+        <div class="revealCardInner" id="revealInner">
+          <div class="revealFace revealBack">🎴</div>
+          <div class="revealFace revealFront ${g}"><img src="${c.art}"></div>
+          <div class="revealBurst" id="revealBurst" style="background:radial-gradient(circle, ${GRADE_COLOR[c.grade]}99, transparent 70%);"></div>
+        </div>
+      </div>
+      <div class="revealGradeLabel" style="color:${GRADE_COLOR[c.grade]};">${c.grade} grade${isTopTier ? ' ✨' : ''}</div>
+      <button class="revealSkip" id="revealSkipBtn" type="button">Skip to results</button>
+    `;
+    let skipped = false;
+    $('revealSkipBtn').addEventListener('click', () => { skipped = true; });
+    await sleep(250);
+    $('revealInner').classList.add('flipped');
+    if(isTopTier){ await sleep(300); $('revealBurst').classList.add('go'); }
+    await sleep(skipped ? 80 : (isTopTier ? 950 : 550));
+    if(skipped) break;
+  }
+
+  const gradeCount = {};
+  newCards.forEach(c => gradeCount[c.grade] = (gradeCount[c.grade]||0)+1);
+  const summaryLine = GRADES.map(g => gradeCount[g] ? `<span style="color:${GRADE_COLOR[g]}">${g}×${gradeCount[g]}</span>` : null).filter(Boolean).join(' &nbsp; ');
+  stage.innerHTML = `
+    <div class="revealTitle">You got ${newCards.length} card${newCards.length===1?'':'s'}!</div>
+    <div class="revealCounter">${summaryLine}</div>
+    <div class="revealGrid">
+      ${newCards.map(c => `<div class="revealGridCard ${c.grade.toLowerCase()}"><img src="${c.art}"></div>`).join('')}
+    </div>
+    <button id="revealCloseBtn" style="width:100%;">Awesome!</button>
+  `;
+  $('revealCloseBtn').addEventListener('click', () => { $('packRevealBg').classList.remove('open'); });
+}
+
+async function openPack(packId){
+  const pack = PACKS.find(p=>p.id===packId);
+  if(!pack) return;
+  const activePool = buildActivePool();
+  if(activePool.length===0){ $('pullStatus').textContent = 'No pool entries available — import a deck first.'; return; }
+  if(rp < pack.cost){ $('pullStatus').textContent = 'Not enough RP (need ' + pack.cost + ', have ' + rp + ').'; return; }
+
+  rp -= pack.cost; await setMeta('rp', rp); renderWallet();
+
+  const rolled = [];
+  for(let i=0;i<pack.size;i++) rolled.push(rollWeighted(pack.weights));
+  const meetsGuarantee = g => gradeIdx(g) >= gradeIdx(pack.guaranteeGrade);
+  let have = rolled.filter(meetsGuarantee).length;
+  if(have < pack.guaranteeMin){
+    const order = rolled.map((g,i)=>({g,i})).sort((a,b)=>gradeIdx(a.g)-gradeIdx(b.g));
+    for(const slot of order){
+      if(have >= pack.guaranteeMin) break;
+      if(!meetsGuarantee(slot.g)){ rolled[slot.i] = pack.guaranteeGrade; have++; }
+    }
+  }
+
+  const summary = {};
+  const deckNamesHit = new Set();
+  const newCards = [];
+  $('pullStatus').textContent = 'Opening ' + pack.tier + ' ×' + pack.size + '...';
+  for(const grade of rolled){
+    // each slot independently picks a random card from the active pool, THEN rolls its own grade —
+    // so the same song/member can come out as a C one pull and an R the next.
+    const entry = activePool[Math.floor(Math.random()*activePool.length)];
+    const deck = decks.find(d => d.deckId === entry.__deckId);
+    const member = (deck && deck.members.find(m => m.id === entry.memberId)) || {name: entry.memberName, img:null};
+    const art = await bakeArt({name:entry.track, album:entry.album, imageUrl:entry.trackImageUrl}, member, grade);
+    const card = {
+      id:'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      art, track: entry.track, album: entry.album, member: member.name,
+      spotifyTrackId: entry.spotifyTrackId || null,
+      previewUrl: entry.previewUrl || null,
+      externalUrl: entry.externalUrl || null,
+      deckId: deck ? deck.deckId : entry.__deckId, deckName: deck ? deck.artistName : '',
+      grade, stars:0, createdAt: Date.now()
+    };
+    newCards.push(card);
+    summary[grade] = (summary[grade]||0) + 1;
+    if(deck) deckNamesHit.add(deck.artistName);
+  }
+  for(const c of newCards){ cards.unshift(c); await idbPut('cards', c); }
+
+  const summaryStr = GRADES.map(g => summary[g] ? g+'×'+summary[g] : null).filter(Boolean).join(' ');
+  const deckStr = deckNamesHit.size ? Array.from(deckNamesHit).join(', ') : '';
+  $('pullStatus').textContent = 'Opened ' + pack.tier + ' ×' + pack.size + ' (' + deckStr + '): ' + summaryStr;
+  renderGallery();
+  await showPackReveal(pack, newCards);
+}
+
+// ---------------- wallet ----------------
+function renderWallet(){ $('rpBalance').textContent = rp.toLocaleString(); }
+$('addRpBtn').addEventListener('click', async () => { rp += 1000; await setMeta('rp', rp); renderWallet(); });
+
+// ---------------- sets ----------------
+function renderSets(){
+  const grid = $('setsGrid');
+  grid.innerHTML = '';
+  const filterDeck = $('collFilter').value;
+  const relevantDecks = filterDeck ? decks.filter(d=>d.deckId===filterDeck) : decks;
+  let anySets = false;
+
+  relevantDecks.forEach(deck => {
+    if(!deck.pool || deck.pool.length === 0) return;
+    const albums = {};
+    deck.pool.forEach(p => {
+      const key = p.album;
+      if(!albums[key]) albums[key] = { members: new Map(), art: p.trackImageUrl };
+      if(!albums[key].members.has(p.memberId)) albums[key].members.set(p.memberId, p.memberName);
+    });
+    Object.entries(albums).forEach(([albumName, info]) => {
+      if(info.members.size === 0) return;
+      anySets = true;
+      const memberEntries = Array.from(info.members.entries()); // [memberId, memberName]
+      let rCount = 0, ownedCount = 0;
+      const chipsHtml = memberEntries.map(([memberId, memberName]) => {
+        const owned = cards.filter(c => c.deckId===deck.deckId && c.album===albumName && c.member===memberName);
+        if(owned.length === 0){
+          const member = deck.members.find(m=>m.id===memberId);
+          return `<div class="setMemberChip missing" title="${escapeHtml(memberName)} — not owned">${member&&member.img?`<img src="${member.img}">`:''}</div>`;
+        }
+        ownedCount++;
+        const best = owned.reduce((a,b) => gradeIdx(b.grade) > gradeIdx(a.grade) ? b : a);
+        const isR = best.grade === 'R';
+        if(isR) rCount++;
+        return `<div class="setMemberChip" style="border-color:${GRADE_COLOR[best.grade]}" title="${escapeHtml(memberName)} — ${best.grade}${best.stars}★">
+          <img src="${best.art}">${isR ? '<span class="rcrown">👑</span>' : ''}
+        </div>`;
+      }).join('');
+      const complete = rCount === memberEntries.length;
+      const card = document.createElement('div');
+      card.className = 'setCard' + (complete ? ' complete' : '');
+      card.style.cursor = 'pointer';
+      card.innerHTML = `
+        <img class="setThumb" src="${info.art||''}">
+        <div class="setInfo">
+          <div class="setTitle">${escapeHtml(albumName)} ${complete ? '👑 FULL R SET' : ''}</div>
+          <div class="setDeck">${escapeHtml(deck.artistName)}</div>
+          <div class="setMembers">${chipsHtml}</div>
+          <div class="setProgress">${ownedCount}/${memberEntries.length} owned · ${rCount}/${memberEntries.length} at R grade — tap for the full track checklist</div>
+        </div>
+      `;
+      card.addEventListener('click', () => openAlbumDetail(deck.deckId, albumName));
+      grid.appendChild(card);
+    });
+  });
+  $('setsEmpty').style.display = anySets ? 'none' : 'block';
+}
+
+// ---------------- album detail: exact track × member missing-card checklist ----------------
+function openAlbumDetail(deckId, albumName){
+  const deck = decks.find(d => d.deckId === deckId);
+  if(!deck) return;
+  const entries = deck.pool.filter(p => p.album === albumName);
+  const tracks = [];
+  const seenTrack = new Set();
+  entries.forEach(p => { if(!seenTrack.has(p.track)){ seenTrack.add(p.track); tracks.push(p.track); } });
+  const members = [];
+  const seenMember = new Set();
+  entries.forEach(p => { if(!seenMember.has(p.memberId)){ seenMember.add(p.memberId); members.push({id:p.memberId, name:p.memberName}); } });
+
+  let totalCells = tracks.length * members.length, ownedCells = 0, rCells = 0;
+  const rows = tracks.map(track => {
+    const cells = members.map(member => {
+      const owned = cards.filter(c => c.deckId===deckId && c.album===albumName && c.track===track && c.member===member.name);
+      if(owned.length === 0){
+        const md = deck.members.find(m=>m.id===member.id);
+        return `<div class="dcCell missing" title="${escapeHtml(member.name)} — missing">${md&&md.img?`<img src="${md.img}">`:''}<span class="dcQ">?</span></div>`;
+      }
+      ownedCells++;
+      const best = owned.reduce((a,b) => gradeIdx(b.grade) > gradeIdx(a.grade) ? b : a);
+      if(best.grade === 'R') rCells++;
+      return `<div class="dcCell owned" style="border-color:${GRADE_COLOR[best.grade]}" title="${escapeHtml(member.name)} — ${best.grade}${best.stars}★">
+        <img src="${best.art}"><span class="dcGrade" style="color:${GRADE_COLOR[best.grade]}">${best.grade}</span>
+      </div>`;
+    }).join('');
+    return `<div class="dcRow"><div class="dcTrackName">${escapeHtml(track)}</div><div class="dcCells">${cells}</div></div>`;
+  }).join('');
+
+  const header = `<div class="dcRow dcHeader"><div class="dcTrackName"></div><div class="dcCells">${members.map(m=>{
+    const md = deck.members.find(x=>x.id===m.id);
+    return `<div class="dcMemberLabel">${md&&md.img?`<img src="${md.img}">`:''}<span>${escapeHtml(m.name)}</span></div>`;
+  }).join('')}</div></div>`;
+
+  $('albumModalBody').innerHTML = `
+    <h3>${escapeHtml(albumName)}</h3>
+    <div class="grademeta">${escapeHtml(deck.artistName)} · ${ownedCells}/${totalCells} cards owned · ${rCells}/${totalCells} at R grade</div>
+    <div class="dcGrid">${header}${rows}</div>
+  `;
+  $('albumModalBg').classList.add('open');
+}
+$('albumModalClose').addEventListener('click', () => $('albumModalBg').classList.remove('open'));
+$('albumModalBg').addEventListener('click', e => { if(e.target.id==='albumModalBg') $('albumModalBg').classList.remove('open'); });
+$('viewSetsBtn').addEventListener('click', () => {
+  const showing = $('setsPanel').style.display !== 'none';
+  $('setsPanel').style.display = showing ? 'none' : 'block';
+  $('viewSetsBtn').textContent = showing ? '🏆 View sets' : '🗂️ Back to cards';
+  if(!showing) renderSets();
+});
+
+// ---------------- gallery ----------------
+function renderGallery(){
+  const gallery = $('gallery');
+  const filterDeck = $('collFilter').value;
+  const groupBy = $('collGroupBy').value;
+  const visible = filterDeck ? cards.filter(c=>c.deckId===filterDeck) : cards;
+  gallery.innerHTML = '';
+  $('collCount').textContent = visible.length + ' cards' + (filterDeck ? '' : ' (' + cards.length + ' total)');
+  $('galleryEmpty').style.display = visible.length ? 'none' : 'block';
+
+  if(groupBy === 'none'){
+    visible.forEach(c => gallery.appendChild(cardEl(c)));
+    return;
+  }
+  const key = groupBy === 'album' ? 'album' : 'member';
+  const groups = {};
+  visible.forEach(c => { const k = c[key] || '(unknown)'; (groups[k] = groups[k] || []).push(c); });
+  const sortedKeys = Object.keys(groups).sort((a,b) => groups[b].length - groups[a].length);
+  sortedKeys.forEach(k => {
+    const header = document.createElement('div');
+    header.className = 'groupHeader';
+    header.textContent = k + ' (' + groups[k].length + ')';
+    gallery.appendChild(header);
+    const row = document.createElement('div');
+    row.className = 'gallery groupRow';
+    groups[k].forEach(c => row.appendChild(cardEl(c)));
+    gallery.appendChild(row);
+  });
+  if($('setsPanel').style.display !== 'none') renderSets();
+}
+$('collFilter').addEventListener('change', renderGallery);
+$('collGroupBy').addEventListener('change', renderGallery);
+function starPipsHtml(stars){
+  return Array.from({length:5}).map((_,i) =>
+    `<span class="starpip ${i<stars?'filled':'hollow'}">★</span>`
+  ).join('');
+}
+function cardEl(c){
+  const div = document.createElement('div');
+  div.className = 'card ' + c.grade.toLowerCase();
+  div.innerHTML = `
+    <img class="bg" src="${c.art}">
+    <div class="tag ${c.grade.toLowerCase()}">${c.grade}</div>
+    <div class="starcol">${starPipsHtml(c.stars)}</div>
+    <div class="deckchip">${escapeHtml(c.deckName||'')}</div>
+    ${c.locked ? '<div class="lockBadge">🔒</div>' : ''}
+  `;
+  div.addEventListener('click', () => openCardModal(c.id));
+  return div;
+}
+
+// ---------------- powerup / upgrade modal ----------------
+// ---------------- merge/sacrifice animation ----------------
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+async function runMergeAnimation(mainCard, materialCard, label){
+  const body = $('modalBody');
+  body.innerHTML = `
+    <h3 style="text-align:center;">${label}</h3>
+    <div class="animStage">
+      <div class="animMaterial animCard"><img src="${materialCard.art}"></div>
+      <div class="animMain animCard"><img src="${mainCard.art}"></div>
+      <div class="animFlash"></div>
+    </div>
+    <div class="animResult" id="animResult"></div>
+  `;
+  await sleep(120);
+  body.querySelector('.animMaterial').classList.add('fly');
+  await sleep(620);
+  body.querySelector('.animFlash').classList.add('flash');
+  await sleep(250);
+}
+function showAnimResult(success, text){
+  const mainEl = document.querySelector('.animMain');
+  if(mainEl) mainEl.classList.add(success ? 'pulseSuccess' : 'pulseFail');
+  const resultEl = $('animResult');
+  if(resultEl) resultEl.innerHTML = `<div class="resultPop ${success?'success':'fail'}">${text}</div>`;
+}
+
+const POWERUP_BASE_COST = {C:50, B:150, A:400, S:1000, R:2500};
+function powerupCost(main){
+  return Math.round(POWERUP_BASE_COST[main.grade] * (1 + main.stars * 0.6));
+}
+function powerupSuccessChance(main, material){
+  const gap = gradeIdx(main.grade) - gradeIdx(material.grade);
+  let chance = gap <= 0 ? 100 : Math.max(10, 100 - gap*25);
+  chance = Math.min(100, chance + material.stars*5);
+  return chance;
+}
+function openCardModal(cardId){
+  const c = cards.find(x=>x.id===cardId);
+  if(!c) return;
+  const body = $('modalBody');
+  const canUpgradeGrade = c.stars >= 5 && GRADES.indexOf(c.grade) < GRADES.length-1;
+  const nextGrade = GRADES[GRADES.indexOf(c.grade)+1];
+  const upgradeCost = UPGRADE_COST[c.grade] || 0;
+  const puCost = powerupCost(c);
+
+  // powerup: any OTHER, UNLOCKED card of this member (any grade) works as material
+  const puMats = c.stars >= 5 ? [] : cards.filter(x => x.id!==c.id && x.deckId===c.deckId && x.member===c.member && !x.locked);
+  // upgrade: needs a maxed 5★ card of the SAME grade and member — locked cards ARE allowed here on purpose
+  const upMats = canUpgradeGrade ? cards.filter(x => x.id!==c.id && x.deckId===c.deckId && x.member===c.member && x.grade===c.grade && x.stars>=5) : [];
+  const showPowerup = puMats.length > 0;
+  const showUpgrade = canUpgradeGrade && upMats.length > 0;
+
+  const playLink = c.spotifyTrackId ? `<a href="https://open.spotify.com/track/${c.spotifyTrackId}" target="_blank" rel="noopener" class="spotifyplay">▶ Play on Spotify</a>`
+    : (c.previewUrl ? `<audio controls src="${c.previewUrl}" style="width:100%;margin-top:14px;"></audio><div class="status" style="text-align:center;">30-second preview (via iTunes)</div>`
+    : (c.externalUrl ? `<a href="${c.externalUrl}" target="_blank" rel="noopener" class="spotifyplay" style="background:linear-gradient(135deg,#5eead4,#33c9b0);color:#06251f;">🔗 View on TVmaze</a>` : ''));
+
+  let hintText = '';
+  if(!showPowerup && !showUpgrade){
+    if(c.stars < 5) hintText = 'No unlocked other ' + escapeHtml(c.member) + ' cards to use as powerup material — pull, collect, or unlock one first.';
+    else if(canUpgradeGrade) hintText = 'Maxed at 5★ — needs another maxed 5★ ' + c.grade + ' ' + escapeHtml(c.member) + ' card to upgrade (locked cards are fine here). Keep collecting!';
+    else hintText = 'Maxed out — this member is already at the top grade for this deck.';
+  }
+
+  body.innerHTML = `
+    <h3>${escapeHtml(c.track)}</h3>
+    <div class="grademeta">${escapeHtml(c.member)} · ${escapeHtml(c.deckName||'')} · ${escapeHtml(c.album)} · <span style="color:${GRADE_COLOR[c.grade]}">${c.grade} grade</span> · ${c.stars}/5 ★</div>
+    <div class="previewcard card ${c.grade.toLowerCase()}">
+      <img class="bg" src="${c.art}">
+      <div class="tag ${c.grade.toLowerCase()}">${c.grade}</div>
+      <div class="starcol">${starPipsHtml(c.stars)}</div>
+      ${c.locked ? '<div class="lockBadge">🔒</div>' : ''}
+    </div>
+    <button class="secondary" id="lockToggleBtn" style="width:100%;">${c.locked ? '🔓 Unlock this card' : '🔒 Lock (protect from powerup sacrifice)'}</button>
+    <div class="status" style="text-align:center;">${c.locked ? 'Locked cards can\'t be used as star-powerup material, but can still be used for rarity upgrades.' : ''}</div>
+    ${playLink}
+    ${(!showPowerup && !showUpgrade) ? `<div class="status" style="text-align:center;margin-top:14px;">${hintText}</div>` : ''}
+
+    ${showPowerup ? `
+    <div class="section" id="powerupSection">
+      <h4>Power up (any unlocked ${escapeHtml(c.member)} card works as material — cost ${puCost} RP)</h4>
+      <label style="margin-top:0;">Sort materials</label>
+      <select id="puSort">
+        <option value="recent">Most recent</option>
+        <option value="rarityDesc">Rarity (high → low)</option>
+        <option value="rarityAsc">Rarity (low → high)</option>
+        <option value="starsDesc">Stars (high → low)</option>
+      </select>
+      <div class="matlist" id="puMatList" style="margin-top:10px;"></div>
+      <div class="status" id="puStatus">Pick a material card above.</div>
+      <button class="secondary" id="puBtn" disabled style="width:100%;">Attempt power up</button>
+    </div>` : ''}
+
+    ${showUpgrade ? `
+    <div class="section" id="upgradeSection">
+      <h4>Upgrade to ${nextGrade} (needs a matching 5★ ${c.grade} ${escapeHtml(c.member)} card — cost ${upgradeCost} RP)</h4>
+      <label style="margin-top:0;">Sort materials</label>
+      <select id="upSort">
+        <option value="recent">Most recent</option>
+        <option value="starsDesc">Stars (high → low)</option>
+      </select>
+      <div class="matlist" id="upMatList" style="margin-top:10px;"></div>
+      <div class="status" id="upStatus">Pick a matching 5★ material card. Locked cards (🔒) can be used here, or unlocked directly from the tile.</div>
+      <button id="upBtn" disabled style="width:100%;">Upgrade grade</button>
+    </div>` : ''}
+
+    <div class="section">
+      <h4>Sell</h4>
+      <div class="status">Grade ${c.grade} at ${c.stars}★ sells for ${sellValue(c)} RP.</div>
+      <button class="danger" id="sellBtn" style="width:100%;" ${c.locked?'disabled title="Unlock first to sell"':''}>Sell card</button>
+    </div>
+  `;
+
+  $('lockToggleBtn').addEventListener('click', async () => {
+    c.locked = !c.locked;
+    await idbPut('cards', c);
+    renderGallery();
+    openCardModal(c.id);
+  });
+
+  function sortMats(list, mode){
+    const arr = list.slice();
+    if(mode === 'rarityDesc') arr.sort((a,b) => gradeIdx(b.grade)-gradeIdx(a.grade) || b.stars-a.stars);
+    else if(mode === 'rarityAsc') arr.sort((a,b) => gradeIdx(a.grade)-gradeIdx(b.grade) || b.stars-a.stars);
+    else if(mode === 'starsDesc') arr.sort((a,b) => b.stars-a.stars || (b.createdAt||0)-(a.createdAt||0));
+    else arr.sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
+    return arr;
+  }
+
+  if(showPowerup){
+  let puSelected = null;
+  const puList = $('puMatList');
+  function renderPuList(){
+    const sorted = sortMats(puMats, $('puSort').value);
+    puList.innerHTML = '';
+    sorted.forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'matcard';
+    el.innerHTML = `<img src="${m.art}"><div class="mtag" style="color:${GRADE_COLOR[m.grade]}">${m.grade}${m.stars}★</div>`;
+    el.addEventListener('click', () => {
+      puSelected = m.id;
+      puList.querySelectorAll('.matcard').forEach(x=>x.classList.remove('selected'));
+      el.classList.add('selected');
+      const chance = powerupSuccessChance(c, m);
+      const affordable = rp >= puCost;
+      $('puStatus').textContent = 'Success chance: ' + chance + '% · costs ' + puCost + ' RP (you have ' + rp + '). Material and RP are spent either way.' + (affordable ? '' : ' Not enough RP.');
+      $('puBtn').disabled = !affordable;
+    });
+    puList.appendChild(el);
+    });
+  }
+  renderPuList();
+  $('puSort').addEventListener('change', renderPuList);
+
+  $('puBtn').addEventListener('click', async () => {
+    const material = cards.find(x=>x.id===puSelected);
+    if(!material || rp < puCost) return;
+    rp -= puCost; await setMeta('rp', rp); renderWallet();
+    const chance = powerupSuccessChance(c, material);
+    const success = Math.random()*100 < chance;
+
+    await runMergeAnimation(c, material, 'Powering up ' + escapeHtml(c.member) + '...');
+    cards = cards.filter(x=>x.id!==material.id);
+    await idbDel('cards', material.id);
+    if(success && c.stars < 5) c.stars += 1;
+    await idbPut('cards', c);
+    showAnimResult(success, success ? '✨ +1 star!' : '💔 Failed — material lost');
+    renderGallery();
+    await sleep(1100);
+    openCardModal(c.id);
+  });
+  } // end showPowerup
+
+  if(showUpgrade){
+  let upSelected = null;
+  const upList = $('upMatList');
+  function renderUpList(){
+    const sorted = sortMats(upMats, $('upSort').value);
+    upList.innerHTML = '';
+    sorted.forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'matcard';
+    el.innerHTML = `<img src="${m.art}"><div class="mtag" style="color:${GRADE_COLOR[m.grade]}">${m.grade}★5</div>${m.locked ? '<div class="mLock" title="Locked — click to unlock">🔒</div>' : ''}`;
+    const lockEl = el.querySelector('.mLock');
+    if(lockEl){
+      lockEl.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        m.locked = false;
+        await idbPut('cards', m);
+        renderGallery();
+        renderUpList();
+      });
+    }
+    el.addEventListener('click', () => {
+      upSelected = m.id;
+      upList.querySelectorAll('.matcard').forEach(x=>x.classList.remove('selected'));
+      el.classList.add('selected');
+      $('upStatus').textContent = rp >= upgradeCost ? 'Ready — costs ' + upgradeCost + ' RP.' : 'Not enough RP (need ' + upgradeCost + ', have ' + rp + ').';
+      $('upBtn').disabled = rp < upgradeCost;
+    });
+    upList.appendChild(el);
+    });
+  }
+  renderUpList();
+  $('upSort').addEventListener('change', renderUpList);
+
+  $('upBtn').addEventListener('click', async () => {
+    const material = cards.find(x=>x.id===upSelected);
+    if(!material || rp < upgradeCost) return;
+    rp -= upgradeCost; await setMeta('rp', rp); renderWallet();
+
+    await runMergeAnimation(c, material, 'Upgrading to ' + nextGrade + '...');
+    cards = cards.filter(x=>x.id!==material.id);
+    await idbDel('cards', material.id);
+    c.grade = nextGrade;
+    c.stars = 0;
+    await idbPut('cards', c);
+    showAnimResult(true, '🎉 Upgraded to ' + nextGrade + '!');
+    renderGallery();
+    await sleep(1100);
+    openCardModal(c.id);
+  });
+  } // end showUpgrade
+
+  $('sellBtn').addEventListener('click', async () => {
+    if(!confirm('Sell this card for ' + sellValue(c) + ' RP?')) return;
+    rp += sellValue(c); await setMeta('rp', rp); renderWallet();
+    cards = cards.filter(x=>x.id!==c.id);
+    await idbDel('cards', c.id);
+    renderGallery();
+    closeModal();
+  });
+
+  $('modalBg').classList.add('open');
+}
+function sellValue(c){
+  const base = {C:500,B:1500,A:4000,S:10000,R:25000}[c.grade] || 500;
+  return Math.round(base * (1 + c.stars*0.1));
+}
+function closeModal(){ $('modalBg').classList.remove('open'); }
+$('modalClose').addEventListener('click', closeModal);
+$('modalBg').addEventListener('click', e => { if(e.target.id==='modalBg') closeModal(); });
+
+$('clearCollBtn').addEventListener('click', async () => {
+  if(!confirm('Clear the whole card collection? This cannot be undone.')) return;
+  cards = [];
+  await idbClear('cards');
+  renderGallery();
+});
+
+// ---------------- import / export (full backup: decks + cards + tasks + rp) ----------------
+$('exportBtn').addEventListener('click', () => {
+  $('ioStatus').textContent = 'Building export...';
+  try{
+    const parts = [];
+    parts.push('{"kind":"cardforge-collection","version":2,"exportedAt":' + JSON.stringify(new Date().toISOString()) + ',"rp":' + JSON.stringify(rp) + ',');
+    parts.push('"tasks":' + JSON.stringify(tasks) + ',');
+    parts.push('"lists":' + JSON.stringify(lists) + ',');
+    parts.push('"decks":[');
+    decks.forEach((d,i) => parts.push((i>0?',':'') + JSON.stringify(d)));
+    parts.push('],"cards":[');
+    cards.forEach((c,i) => parts.push((i>0?',':'') + JSON.stringify(c)));
+    parts.push(']}');
+    const blob = new Blob(parts, {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'card-collection-export-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    $('ioStatus').textContent = 'Exported ' + decks.length + ' decks, ' + cards.length + ' cards, ' + lists.length + ' quest lists (' + (blob.size/1024/1024).toFixed(1) + ' MB).';
+  }catch(e){ $('ioStatus').textContent = 'Export failed: ' + e.message; }
+});
+$('importBtn').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; if(!file) return;
+  const text = await file.text();
+  let payload;
+  try{ payload = JSON.parse(text); }catch(err){ $('ioStatus').textContent = 'Invalid file.'; return; }
+  if(payload.kind === 'cardforge-deck'){
+    $('ioStatus').textContent = 'That looks like a single deck file, not a full collection backup — use "Import deck file" in the Decks panel instead.';
+    $('importFile').value = '';
+    return;
+  }
+  if(payload.kind && payload.kind !== 'cardforge-collection'){
+    $('ioStatus').textContent = 'This file doesn\'t look like a Card Collection export.';
+    $('importFile').value = '';
+    return;
+  }
+  if(!confirm('Import will REPLACE your current decks, cards, tasks, quest lists, and RP. Continue?')) return;
+  await idbClear('decks'); await idbClear('cards'); await idbClear('tasks'); await idbClear('lists');
+  decks = payload.decks || []; cards = payload.cards || []; tasks = payload.tasks || []; lists = payload.lists || []; rp = payload.rp || 0;
+  for(const d of decks) await idbPut('decks', d);
+  for(const c of cards) await idbPut('cards', c);
+  for(const t of tasks) await idbPut('tasks', t);
+  for(const l of lists) await idbPut('lists', l);
+  await setMeta('rp', rp);
+  renderDecks(); renderDeckSelect(); renderCollFilter(); renderTasks(); renderLists(); renderGallery(); renderWallet();
+  $('importFile').value = '';
+  $('ioStatus').textContent = 'Import complete: ' + decks.length + ' decks, ' + cards.length + ' cards, ' + lists.length + ' quest lists.';
+});
+
+// ---------------- init ----------------
+(async function init(){
+  await openDB();
+  decks = await idbAllLocal('decks');
+  cards = await idbAllLocal('cards');
+  tasks = await idbAllLocal('tasks');
+  lists = await idbAllLocal('lists');
+  rp = await getMetaLocal('rp', 0);
+  renderDecks();
+  renderDeckSelect();
+  renderCollFilter();
+  renderTasks();
+  renderLists();
+  renderGallery();
+  renderWallet();
+  updateCloudUI();
+  const savedConfig = loadFirebaseConfig();
+  if(savedConfig){
+    $('firebaseConfigInput').value = JSON.stringify(savedConfig);
+    await connectFirebase(savedConfig);
+  }
+})();
+</script>
+</body>
+</html>
