@@ -1102,16 +1102,26 @@ function renderDecks(){
   decks.forEach(d => {
     const el = document.createElement('div');
     el.className = 'deckcard';
+    const removeLabel = cloudActive ? '🗑️ Delete from cloud' : 'Remove';
     el.innerHTML = `
       <div class="dinfo"><div class="davatar">${escapeHtml((d.artistName||'?').charAt(0).toUpperCase())}</div>
       <div><div class="dn">${escapeHtml(d.artistName)}</div><div class="dm">${d.members.length} members · ${d.pool.length} pool entries</div></div></div>
-      <button class="danger small" data-id="${d.deckId}" type="button">Remove</button>
+      <button class="danger small" data-id="${d.deckId}" type="button">${removeLabel}</button>
     `;
     el.querySelector('button').addEventListener('click', async () => {
-      if(!confirm('Remove deck "' + d.artistName + '"? Cards you already own from it stay in your collection.')) return;
-      decks = decks.filter(x=>x.deckId!==d.deckId);
-      await idbDel('decks', d.deckId);
-      renderDecks(); renderDeckSelect(); renderCollFilter();
+      if(cloudActive){
+        // this is a real, permanent, shared delete — make it deliberately hard to trigger by accident
+        const typed = prompt('This permanently deletes "' + d.artistName + '" from the cloud for everyone signed in. Type the deck name exactly to confirm:');
+        if(typed !== d.artistName) { if(typed !== null) alert('Name didn\'t match — nothing was deleted.'); return; }
+        await CloudStore.clearCollection('decks/' + d.deckId + '/pool');
+        await CloudStore.clearCollection('decks/' + d.deckId + '/members');
+        await CloudStore.del('decks', d.deckId);
+      } else {
+        if(!confirm('Remove deck "' + d.artistName + '" from your local list? Cards you already own from it stay in your collection.')) return;
+        decks = decks.filter(x=>x.deckId!==d.deckId);
+        await idbDelLocal('decks', d.deckId);
+        renderDecks(); renderDeckSelect(); renderCollFilter();
+      }
     });
     list.appendChild(el);
   });
