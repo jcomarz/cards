@@ -346,6 +346,21 @@
   <div class="empty" id="taskEmpty" style="display:none;">Nothing pending. Add a quick item above, or drop in a quest from your library below.</div>
 </div>
 
+<div class="panel" id="historyPanel">
+  <h2><span class="ic">🕒</span>History <span class="count-pill" id="historyCount">0 completed</span></h2>
+  <div class="status">Everything you've completed. Undo puts it back on your to-do and takes the RP back; Again just adds a fresh copy without touching what you already earned.</div>
+  <div class="tracks" id="historyList" style="margin-top:10px;"></div>
+  <div class="empty" id="historyEmpty">Nothing completed yet.</div>
+</div>
+
+<div class="panel" id="gardenReportPanel">
+  <h2><span class="ic">🌱</span>Garden report</h2>
+  <div class="status">Paste a full garden productivity report — plots, THX!/FEELINGS lines, and star-rated entries all auto-score. Only one summary line gets logged to history, not each item.</div>
+  <textarea id="gardenReportInput" placeholder="Paste the whole report here..." style="width:100%;min-height:140px;margin-top:10px;background:var(--ink2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-family:monospace;font-size:12px;"></textarea>
+  <button class="big" id="submitGardenReportBtn">Score this report</button>
+  <div class="status" id="gardenReportStatus"></div>
+</div>
+
 <div class="panel" id="listsPanel">
   <h2><span class="ic">📚</span>Quest library <span class="count-pill" id="listCount">0 saved</span></h2>
   <div class="status">Build reusable quest templates, organized by category. Dropping one into your to-do copies its items over — finish the whole batch for a bonus.</div>
@@ -524,13 +539,14 @@ const UPGRADE_COST = {C:5000,B:10000,A:20000,S:0};
 let db;
 function openDB(){
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('CardCollectionDB', 2);
+    const req = indexedDB.open('CardCollectionDB', 3);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if(!d.objectStoreNames.contains('decks')) d.createObjectStore('decks', {keyPath:'deckId'});
       if(!d.objectStoreNames.contains('cards')) d.createObjectStore('cards', {keyPath:'id'});
       if(!d.objectStoreNames.contains('tasks')) d.createObjectStore('tasks', {keyPath:'id'});
       if(!d.objectStoreNames.contains('lists')) d.createObjectStore('lists', {keyPath:'id'});
+      if(!d.objectStoreNames.contains('history')) d.createObjectStore('history', {keyPath:'id'});
       if(!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', {keyPath:'key'});
     };
     req.onsuccess = e => { db = e.target.result; resolve(db); };
@@ -650,8 +666,10 @@ async function connectFirebase(config){
         cards = await idbAll('cards');
         tasks = await idbAll('tasks');
         lists = await idbAll('lists');
+        history = await idbAll('history');
+        history.sort((a,b) => (b.completedAt||0)-(a.completedAt||0));
         rp = await getMeta('rp', 0);
-        renderTasks(); renderLists(); renderGallery(); renderWallet();
+        renderTasks(); renderLists(); renderHistory(); renderGallery(); renderWallet();
         if(deckWatchUnsub) deckWatchUnsub();
         deckWatchUnsub = CloudStore.watch('decks', liveDecks => {
           // deck docs from Firestore don't carry pool or members inline (both are subcollections
@@ -761,16 +779,26 @@ function renderTasks(){
     await idbDel('tasks', t.id);
     rp += DIFFICULTY_RP[t.difficulty];
 
+    let bonusAwarded = 0;
     // if this was the last pending item from a dropped-in quest batch, pay out the bonus
     if(t.batchId){
       const remaining = tasks.filter(x => x.batchId === t.batchId).length;
       if(remaining === 0 && t.batchBonusRP){
         rp += t.batchBonusRP;
+        bonusAwarded = t.batchBonusRP;
         alert('🎉 Quest complete: "' + t.sourceListName + '"! Bonus +' + t.batchBonusRP + ' RP');
       }
     }
+    const hist = {
+      id:'h_'+Date.now()+Math.random().toString(36).slice(2,6),
+      text: t.text, difficulty: t.difficulty, rp: DIFFICULTY_RP[t.difficulty] + bonusAwarded,
+      category: t.category || null, sourceListName: t.sourceListName || null,
+      completedAt: Date.now()
+    };
+    history.unshift(hist);
+    await idbPut('history', hist);
     await setMeta('rp', rp);
-    renderWallet(); renderTasks();
+    renderWallet(); renderTasks(); renderHistory();
   }));
 }
 $('taskCategoryFilter').addEventListener('change', renderTasks);
@@ -797,6 +825,7 @@ $('taskText').addEventListener('keydown', e => { if(e.key === 'Enter') addTaskFr
 
 // ---------------- quest library ----------------
 let lists = [];
+let history = [];
 let builderItems = [];
 
 function renderListBuilderItems(){
@@ -895,6 +924,86 @@ function renderLists(){
   });
 }
 $('libraryCategoryFilter').addEventListener('change', renderLists);
+
+// ---------------- completed task history ----------------
+function renderHistory(){
+  const wrap = $('historyList');
+  wrap.innerHTML = '';
+  $('historyEmpty').style.display = history.length ? 'none' : 'block';
+  $('historyCount').textContent = history.length + ' completed';
+  history.slice(0, 100).forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'track';
+    const when = new Date(h.completedAt).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+    const catTag = h.category ? `<span class="taskCatChip">${escapeHtml(h.category)}</span>` : '';
+    row.innerHTML = `
+      <div class="meta">
+        <div class="t">${escapeHtml(h.text)} ${catTag}</div>
+        <div class="a">+${h.rp} RP · ${when}</div>
+      </div>
+      <button class="secondary small" data-act="again" data-id="${h.id}" type="button">🔁 Again</button>
+      <button class="secondary small" data-act="undo" data-id="${h.id}" type="button">↩️ Undo</button>
+    `;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll('[data-act="undo"]').forEach(btn => btn.addEventListener('click', async e => {
+    const h = history.find(x=>x.id===e.target.dataset.id);
+    if(!h) return;
+    if(!confirm('Undo "' + h.text + '"? This removes ' + h.rp + ' RP and puts it back on your to-do.')) return;
+    history = history.filter(x=>x.id!==h.id);
+    await idbDel('history', h.id);
+    rp = Math.max(0, rp - h.rp);
+    await setMeta('rp', rp);
+    const t = {id:'t_'+Date.now()+Math.random().toString(36).slice(2,6), text:h.text, difficulty:h.difficulty, category:h.category||undefined};
+    tasks.push(t);
+    await idbPut('tasks', t);
+    renderWallet(); renderTasks(); renderHistory();
+  }));
+  wrap.querySelectorAll('[data-act="again"]').forEach(btn => btn.addEventListener('click', async e => {
+    const h = history.find(x=>x.id===e.target.dataset.id);
+    if(!h) return;
+    const t = {id:'t_'+Date.now()+Math.random().toString(36).slice(2,6), text:h.text, difficulty:h.difficulty, category:h.category||undefined};
+    tasks.push(t);
+    await idbPut('tasks', t);
+    renderTasks();
+    alert('"' + h.text + '" is back on your to-do — completing it again pays RP fresh, on top of what you already earned.');
+  }));
+}
+
+// ---------------- garden report auto-scoring ----------------
+function parseGardenReport(text){
+  const num = (re) => { const m = text.match(re); return m ? parseInt(m[1]) : 0; };
+  const plots = num(/Plants Growing:\s*(\d+)/i);
+  const thx = num(/THX!\s*\((\d+)\s*items?\)/i);
+  const feelings = num(/FEELINGS\s*\((\d+)\s*items?\)/i);
+  const star1 = num(/^⭐(?!⭐)\s*\((\d+)\s*items?\)/m);
+  const star2 = num(/^⭐⭐(?!⭐)\s*\((\d+)\s*items?\)/m);
+  const star3 = num(/^⭐⭐⭐\s*\((\d+)\s*items?\)/m);
+  const plotRP = plots * 100;
+  const noteRP = (thx + feelings) * 100;
+  const starRP = star1*DIFFICULTY_RP.easy + star2*DIFFICULTY_RP.medium + star3*DIFFICULTY_RP.hard;
+  const total = plotRP + noteRP + starRP;
+  return { plots, thx, feelings, star1, star2, star3, plotRP, noteRP, starRP, total };
+}
+$('submitGardenReportBtn').addEventListener('click', async () => {
+  const text = $('gardenReportInput').value;
+  if(!text.trim()){ $('gardenReportStatus').textContent = 'Paste a report first.'; return; }
+  const p = parseGardenReport(text);
+  if(p.total === 0){ $('gardenReportStatus').textContent = "Couldn't find any recognizable sections — check the report format matches (Plants Growing / THX! / FEELINGS / ⭐ headers)."; return; }
+  rp += p.total;
+  await setMeta('rp', rp);
+  const hist = {
+    id:'h_'+Date.now()+Math.random().toString(36).slice(2,6),
+    text: 'Garden report submitted', difficulty: null, rp: p.total,
+    category: 'Garden', completedAt: Date.now()
+  };
+  history.unshift(hist);
+  await idbPut('history', hist);
+  renderWallet(); renderHistory();
+  $('gardenReportInput').value = '';
+  $('gardenReportStatus').textContent = 'Logged +' + p.total + ' RP — ' + p.plots + ' plots (' + p.plotRP + '), ' + (p.thx+p.feelings) + ' THX/FEELINGS lines (' + p.noteRP + '), stars ' + p.star1 + '★/' + p.star2 + '★★/' + p.star3 + '★★★ (' + p.starRP + ').';
+});
+
 
 function renderDecks(){
   $('deckCount').textContent = decks.length + ' imported';
@@ -1780,12 +1889,15 @@ $('importFile').addEventListener('change', async e => {
   cards = await idbAllLocal('cards');
   tasks = await idbAllLocal('tasks');
   lists = await idbAllLocal('lists');
+  history = await idbAllLocal('history');
+  history.sort((a,b) => (b.completedAt||0)-(a.completedAt||0));
   rp = await getMetaLocal('rp', 0);
   renderDecks();
   renderDeckSelect();
   renderCollFilter();
   renderTasks();
   renderLists();
+  renderHistory();
   renderGallery();
   renderWallet();
   updateCloudUI();
