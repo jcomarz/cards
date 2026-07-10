@@ -442,8 +442,9 @@
 
 <div class="panel">
   <h2><span class="ic">🎁</span>Booster packs</h2>
-  <label>Pull from deck</label>
-  <select id="deckSelect"><option value="">🎲 All decks (random)</option></select>
+  <label>Pull from decks <a href="#" id="packDeckAll" class="linkbtn">all</a> · <a href="#" id="packDeckNone" class="linkbtn">none</a></label>
+  <div class="difficulty-chips" id="packDeckChips" style="margin-bottom:6px;"></div>
+  <div class="status" id="packDeckStatus"></div>
   <div class="gallery" id="packShop" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-top:14px;"></div>
   <div class="status" id="pullStatus"></div>
 </div>
@@ -1250,18 +1251,29 @@ function renderDecks(){
     list.appendChild(el);
   });
 }
+let packDeckIds = new Set(); // decks currently eligible for booster pack pulls
 function renderDeckSelect(){
-  const sel = $('deckSelect');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">🎲 All decks (random)</option>';
+  decks.forEach(d => { if(!packDeckIds.has(d.deckId)) packDeckIds.add(d.deckId); }); // new decks default to included
+  const wrap = $('packDeckChips');
+  wrap.innerHTML = '';
+  if(decks.length === 0){ wrap.innerHTML = '<div class="empty" style="padding:6px;">Import a deck first.</div>'; $('packDeckStatus').textContent = ''; renderPackShop(); return; }
   decks.forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d.deckId; opt.textContent = d.artistName + ' only (' + d.pool.length + ')';
-    sel.appendChild(opt);
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (packDeckIds.has(d.deckId) ? ' active' : '');
+    chip.textContent = d.artistName;
+    chip.style.flex = 'none';
+    chip.addEventListener('click', () => {
+      if(packDeckIds.has(d.deckId)) packDeckIds.delete(d.deckId); else packDeckIds.add(d.deckId);
+      renderDeckSelect();
+    });
+    wrap.appendChild(chip);
   });
-  sel.value = decks.some(d=>d.deckId===prev) ? prev : '';
+  const n = packDeckIds.size;
+  $('packDeckStatus').textContent = n === 0 ? 'No decks selected — packs are disabled until you pick at least one.' : n + ' of ' + decks.length + ' deck(s) selected for pulls.';
   renderPackShop();
 }
+$('packDeckAll').addEventListener('click', e => { e.preventDefault(); decks.forEach(d => packDeckIds.add(d.deckId)); renderDeckSelect(); });
+$('packDeckNone').addEventListener('click', e => { e.preventDefault(); packDeckIds.clear(); renderDeckSelect(); });
 function renderCollFilter(){
   // multi-select chip filter — a deck not in includedDeckIds is hidden from the gallery/sets
   decks.forEach(d => { if(!includedDeckIds.has(d.deckId)) includedDeckIds.add(d.deckId); }); // new decks default to shown
@@ -1531,8 +1543,7 @@ function rollWeighted(weights){
   return Object.keys(weights)[0];
 }
 function buildActivePool(){
-  const selected = $('deckSelect').value;
-  const source = selected ? decks.filter(d=>d.deckId===selected) : decks;
+  const source = decks.filter(d => packDeckIds.has(d.deckId));
   const activePool = [];
   source.forEach(d => d.pool.forEach(p => activePool.push(Object.assign({}, p, {__deckId: d.deckId}))));
   return activePool;
@@ -1564,7 +1575,6 @@ function renderPackShop(){
     shop.appendChild(el);
   });
 }
-$('deckSelect').addEventListener('change', renderPackShop);
 
 async function showPackReveal(pack, newCards){
   const stage = $('revealStage');
