@@ -1252,8 +1252,9 @@ function renderDecks(){
   });
 }
 let packDeckIds = new Set(); // decks currently eligible for booster pack pulls
+let packDeckSeen = new Set(); // decks we've already decided a default inclusion for — prevents re-render from undoing a manual uncheck
 function renderDeckSelect(){
-  decks.forEach(d => { if(!packDeckIds.has(d.deckId)) packDeckIds.add(d.deckId); }); // new decks default to included
+  decks.forEach(d => { if(!packDeckSeen.has(d.deckId)){ packDeckSeen.add(d.deckId); packDeckIds.add(d.deckId); } }); // only brand-new decks default to included
   const wrap = $('packDeckChips');
   wrap.innerHTML = '';
   if(decks.length === 0){ wrap.innerHTML = '<div class="empty" style="padding:6px;">Import a deck first.</div>'; $('packDeckStatus').textContent = ''; renderPackShop(); return; }
@@ -1274,9 +1275,10 @@ function renderDeckSelect(){
 }
 $('packDeckAll').addEventListener('click', e => { e.preventDefault(); decks.forEach(d => packDeckIds.add(d.deckId)); renderDeckSelect(); });
 $('packDeckNone').addEventListener('click', e => { e.preventDefault(); packDeckIds.clear(); renderDeckSelect(); });
+let includedDeckSeen = new Set(); // same "only default brand-new decks" fix, for the Collection filter
 function renderCollFilter(){
   // multi-select chip filter — a deck not in includedDeckIds is hidden from the gallery/sets
-  decks.forEach(d => { if(!includedDeckIds.has(d.deckId)) includedDeckIds.add(d.deckId); }); // new decks default to shown
+  decks.forEach(d => { if(!includedDeckSeen.has(d.deckId)){ includedDeckSeen.add(d.deckId); includedDeckIds.add(d.deckId); } }); // only brand-new decks default to shown
   const wrap = $('deckFilterChips');
   wrap.innerHTML = '';
   if(decks.length === 0){ wrap.innerHTML = '<div class="empty" style="padding:6px;">No decks imported yet.</div>'; return; }
