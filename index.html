@@ -1663,6 +1663,7 @@ async function openPack(packId){
       spotifyTrackId: entry.spotifyTrackId || null,
       previewUrl: entry.previewUrl || null,
       externalUrl: entry.externalUrl || null,
+      summary: entry.summary || null,
       deckId: deck ? deck.deckId : entry.__deckId, deckName: deck ? deck.artistName : '',
       grade, stars:0, createdAt: Date.now()
     };
@@ -2013,6 +2014,7 @@ function openCardModal(cardId){
     <button class="secondary" id="lockToggleBtn" style="width:100%;">${c.locked ? '🔓 Unlock this card' : '🔒 Lock (protect from powerup sacrifice)'}</button>
     <div class="status" style="text-align:center;">${c.locked ? 'Locked cards can\'t be used as star-powerup material, but can still be used for rarity upgrades.' : ''}</div>
     ${playLink}
+    ${c.summary ? `<div class="status" style="margin-top:12px;text-align:left;line-height:1.5;">${escapeHtml(c.summary.length > 240 ? c.summary.slice(0,240).trim() + '…' : c.summary)}</div>` : ''}
     ${buildSetProgressHtml(c)}
     ${(!showPowerup && !showUpgrade) ? `<div class="status" style="text-align:center;margin-top:14px;">${hintText}</div>` : ''}
 
@@ -2199,7 +2201,7 @@ function openCardModal(cardId){
   $('modalBg').classList.add('open');
 }
 function sellValue(c){
-  const base = {C:500,B:1500,A:4000,S:10000,R:25000}[c.grade] || 500;
+  const base = {C:15,B:33,A:130,S:260,R:660}[c.grade] || 15;
   return Math.round(base * (1 + c.stars*0.1));
 }
 function closeModal(){ $('modalBg').classList.remove('open'); }
