@@ -1920,6 +1920,60 @@ function powerupSuccessChance(main, material){
   chance = Math.min(100, chance + material.stars*5);
   return chance;
 }
+function buildSetProgressHtml(c){
+  const deck = decks.find(d => d.deckId === c.deckId);
+  if(!deck) return '';
+  const isMultiMember = deck.members.length > 1;
+
+  if(isMultiMember){
+    // song set: one slot per member of this deck, for this exact song
+    const memberEntries = [];
+    const seen = new Set();
+    deck.pool.filter(p => p.track === c.track && p.album === c.album).forEach(p => {
+      if(seen.has(p.memberId)) return; seen.add(p.memberId);
+      memberEntries.push({id:p.memberId, name:p.memberName});
+    });
+    if(memberEntries.length <= 1) return '';
+    let ownedCount = 0;
+    const slots = memberEntries.map(m => {
+      const owned = cards.filter(x => x.deckId===c.deckId && x.track===c.track && x.album===c.album && x.member===m.name);
+      if(owned.length === 0){
+        const md = deck.members.find(x=>x.id===m.id);
+        return `<div class="setMemberChip missing" title="${escapeHtml(m.name)} — missing">${md&&md.img?`<img src="${md.img}">`:''}</div>`;
+      }
+      ownedCount++;
+      const best = owned.reduce((a,b) => gradeIdx(b.grade) > gradeIdx(a.grade) ? b : a);
+      const isR = best.grade === 'R';
+      return `<div class="setMemberChip" style="border-color:${GRADE_COLOR[best.grade]}" title="${escapeHtml(m.name)} — ${best.grade}${best.stars}★">
+        <img src="${best.art}">${isR ? '<span class="rcrown">👑</span>' : ''}
+      </div>`;
+    }).join('');
+    return `<div class="section"><h4>Complete this song's set</h4><div class="setMembers">${slots}</div><div class="setProgress">${ownedCount}/${memberEntries.length} members owned for "${escapeHtml(c.track)}"</div></div>`;
+  } else {
+    // album set: one slot per track in this album (single-member deck — the only variation is which song, not who's singing it)
+    const tracks = [];
+    const seen = new Set();
+    deck.pool.filter(p => p.album === c.album).forEach(p => {
+      if(seen.has(p.track)) return; seen.add(p.track);
+      tracks.push({track:p.track, art:p.trackImageUrl});
+    });
+    if(tracks.length <= 1) return '';
+    let ownedCount = 0;
+    const slots = tracks.map(t => {
+      const owned = cards.filter(x => x.deckId===c.deckId && x.album===c.album && x.track===t.track);
+      if(owned.length === 0){
+        return `<div class="setMemberChip missing" title="${escapeHtml(t.track)} — missing">${t.art?`<img src="${t.art}">`:''}</div>`;
+      }
+      ownedCount++;
+      const best = owned.reduce((a,b) => gradeIdx(b.grade) > gradeIdx(a.grade) ? b : a);
+      const isR = best.grade === 'R';
+      return `<div class="setMemberChip" style="border-color:${GRADE_COLOR[best.grade]}" title="${escapeHtml(t.track)} — ${best.grade}${best.stars}★">
+        <img src="${best.art}">${isR ? '<span class="rcrown">👑</span>' : ''}
+      </div>`;
+    }).join('');
+    return `<div class="section"><h4>Complete this album's set</h4><div class="setMembers">${slots}</div><div class="setProgress">${ownedCount}/${tracks.length} tracks owned from "${escapeHtml(c.album)}"</div></div>`;
+  }
+}
 function openCardModal(cardId){
   const c = cards.find(x=>x.id===cardId);
   if(!c) return;
@@ -1959,6 +2013,7 @@ function openCardModal(cardId){
     <button class="secondary" id="lockToggleBtn" style="width:100%;">${c.locked ? '🔓 Unlock this card' : '🔒 Lock (protect from powerup sacrifice)'}</button>
     <div class="status" style="text-align:center;">${c.locked ? 'Locked cards can\'t be used as star-powerup material, but can still be used for rarity upgrades.' : ''}</div>
     ${playLink}
+    ${buildSetProgressHtml(c)}
     ${(!showPowerup && !showUpgrade) ? `<div class="status" style="text-align:center;margin-top:14px;">${hintText}</div>` : ''}
 
     ${showPowerup ? `
@@ -2013,46 +2068,69 @@ function openCardModal(cardId){
   }
 
   if(showPowerup){
-  let puSelected = null;
+  let puSelectedOrder = []; // ids, in the order they were clicked — this is the attempt order
   const puList = $('puMatList');
+  function updatePuStatus(){
+    const n = puSelectedOrder.length;
+    if(n === 0){ $('puStatus').textContent = 'Pick one or more material cards above — they\'ll be tried in the order you select them.'; $('puBtn').disabled = true; return; }
+    const firstMat = cards.find(x=>x.id===puSelectedOrder[0]);
+    const chance = firstMat ? powerupSuccessChance(c, firstMat) : 0;
+    const affordable = rp >= puCost;
+    $('puStatus').textContent = n + ' material' + (n===1?'':'s') + ' selected · next attempt: ' + chance + '% chance, ' + puCost + ' RP (you have ' + rp + '). Runs in order, stops the moment 5★ is hit — anything left unused stays in your inventory.' + (affordable ? '' : ' Not enough RP for the next attempt.');
+    $('puBtn').textContent = 'Attempt power up (' + n + ' queued)';
+    $('puBtn').disabled = !affordable;
+  }
   function renderPuList(){
     const sorted = sortMats(puMats, $('puSort').value);
     puList.innerHTML = '';
     sorted.forEach(m => {
     const el = document.createElement('div');
-    el.className = 'matcard';
-    el.innerHTML = `<img src="${m.art}"><div class="mtag" style="color:${GRADE_COLOR[m.grade]}">${m.grade}${m.stars}★</div>`;
+    el.className = 'matcard' + (puSelectedOrder.includes(m.id) ? ' selected' : '');
+    const orderIdx = puSelectedOrder.indexOf(m.id);
+    el.innerHTML = `<img src="${m.art}"><div class="mtag" style="color:${GRADE_COLOR[m.grade]}">${m.grade}${m.stars}★</div>${orderIdx>=0 ? `<div class="mLock" style="left:2px;right:auto;background:rgba(94,234,212,.85);color:#06251f;">${orderIdx+1}</div>` : ''}`;
     el.addEventListener('click', () => {
-      puSelected = m.id;
-      puList.querySelectorAll('.matcard').forEach(x=>x.classList.remove('selected'));
-      el.classList.add('selected');
-      const chance = powerupSuccessChance(c, m);
-      const affordable = rp >= puCost;
-      $('puStatus').textContent = 'Success chance: ' + chance + '% · costs ' + puCost + ' RP (you have ' + rp + '). Material and RP are spent either way.' + (affordable ? '' : ' Not enough RP.');
-      $('puBtn').disabled = !affordable;
+      const i = puSelectedOrder.indexOf(m.id);
+      if(i >= 0) puSelectedOrder.splice(i,1); else puSelectedOrder.push(m.id);
+      renderPuList();
+      updatePuStatus();
     });
     puList.appendChild(el);
     });
   }
   renderPuList();
+  updatePuStatus();
   $('puSort').addEventListener('change', renderPuList);
 
   $('puBtn').addEventListener('click', async () => {
-    const material = cards.find(x=>x.id===puSelected);
-    if(!material || rp < puCost) return;
-    rp -= puCost; await setMeta('rp', rp); renderWallet();
-    const chance = powerupSuccessChance(c, material);
-    const success = Math.random()*100 < chance;
+    $('puBtn').disabled = true;
+    let attempts = 0, successes = 0, stoppedEarly = false, ranOutOfRp = false;
+    const queue = puSelectedOrder.slice();
+    for(const matId of queue){
+      if(c.stars >= 5){ stoppedEarly = true; break; }
+      const material = cards.find(x=>x.id===matId);
+      if(!material) continue; // shouldn't happen, but skip gracefully if it's gone
+      const cost = powerupCost(c); // recompute — cost scales with current star level, which may have just changed
+      if(rp < cost){ ranOutOfRp = true; break; }
+      rp -= cost; await setMeta('rp', rp); renderWallet();
+      const chance = powerupSuccessChance(c, material);
+      const success = Math.random()*100 < chance;
 
-    await runMergeAnimation(c, material, 'Powering up ' + escapeHtml(c.member) + '...');
-    cards = cards.filter(x=>x.id!==material.id);
-    await idbDel('cards', material.id);
-    if(success && c.stars < 5) c.stars += 1;
-    await idbPut('cards', c);
-    if(success) SFX.powerupSuccess(); else SFX.powerupFail();
-    showAnimResult(success, success ? '✨ +1 star!' : '💔 Failed — material lost');
-    renderGallery();
-    await sleep(1100);
+      await runMergeAnimation(c, material, 'Powering up ' + escapeHtml(c.member) + ' (' + (attempts+1) + '/' + queue.length + ')...');
+      cards = cards.filter(x=>x.id!==material.id);
+      await idbDel('cards', material.id);
+      if(success && c.stars < 5) c.stars += 1;
+      await idbPut('cards', c);
+      if(success) SFX.powerupSuccess(); else SFX.powerupFail();
+      showAnimResult(success, success ? '✨ +1 star! (' + c.stars + '/5)' : '💔 Failed — material lost');
+      renderGallery();
+      attempts++; if(success) successes++;
+      await sleep(900);
+    }
+    const leftoverUsed = queue.length - attempts;
+    let summary = 'Ran ' + attempts + ' attempt' + (attempts===1?'':'s') + ', ' + successes + ' succeeded (' + c.stars + '/5★ now).';
+    if(stoppedEarly && leftoverUsed > 0) summary += ' Stopped early — hit 5★, ' + leftoverUsed + ' selected card(s) left untouched in your inventory.';
+    if(ranOutOfRp) summary += ' Stopped — ran out of RP.';
+    alert(summary);
     openCardModal(c.id);
   });
   } // end showPowerup
