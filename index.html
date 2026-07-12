@@ -1362,6 +1362,18 @@ function loadImg(src){
     img.onload = () => resolve(img); img.onerror = reject; img.src = src;
   });
 }
+async function loadImgRetry(src, attempts){
+  attempts = attempts || 3;
+  let lastErr;
+  for(let i=0;i<attempts;i++){
+    try{
+      if(i === 0) return await loadImg(src);
+      const sep = src.includes('?') ? '&' : '?';
+      return await loadImg(src + sep + '_cb=' + Date.now() + i);
+    }catch(e){ lastErr = e; await sleep(150); }
+  }
+  throw lastErr;
+}
 function wrapText(ctx, text, x, y, maxWidth, lineHeight){
   const words = text.split(' '); let line=''; const lines=[];
   for(const w of words){
@@ -1435,7 +1447,7 @@ async function bakeArt(track, member, grade, forcedPhotoId){
   ctx.fillStyle = '#111'; ctx.fillRect(0,0,W,H);
   if(track.imageUrl){
     try{
-      const bg = await loadImg(track.imageUrl);
+      const bg = await loadImgRetry(track.imageUrl);
       const scale = Math.max(W/bg.width, H/bg.height);
       const sw=W/scale, sh=H/scale, sx=(bg.width-sw)/2, sy=(bg.height-sh)/2;
       ctx.drawImage(bg, sx, sy, sw, sh, 0, 0, W, H);
