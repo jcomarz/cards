@@ -853,23 +853,29 @@ async function rebakeDeckCards(deckId){
     }catch(e){ /* fall back to whatever's already loaded locally */ }
   }
 
-  let updated = 0, skipped = 0;
+  let updated = 0, skipped = 0, fellBack = 0;
   for(const c of affected){
     // match by the same identity fields already stored on the card — this is what keeps a card's
     // "identity" intact even as the deck grows: the card never points at a pool array index or
     // anything positional, just track+album+member, so adding more songs later can't confuse it
     const entry = deck.pool.find(p => p.track === c.track && p.album === c.album && p.memberName === c.member);
     if(!entry){ skipped++; continue; }
-    const member = deck.members.find(m => m.id === entry.memberId) || { name: entry.memberName, img: null };
-    c.art = await bakeArt({ name: entry.track, album: entry.album, imageUrl: entry.trackImageUrl }, member, c.grade);
+    const baseMember = deck.members.find(m => m.id === entry.memberId) || { name: entry.memberName, imgs: [] };
+    const member = Object.assign({}, baseMember, {name: entry.memberName || baseMember.name});
+    const hadRequestedPhoto = c.memberPhotoId && getMemberImgs(baseMember).some(p => p.id === c.memberPhotoId);
+    const baked = await bakeArt({ name: entry.track, album: entry.album, imageUrl: entry.trackImageUrl }, member, c.grade, c.memberPhotoId);
+    if(c.memberPhotoId && !hadRequestedPhoto) fellBack++; // that specific photo was deleted — landed on a random one instead
+    c.art = baked.art;
+    c.memberPhotoId = baked.photoId;
     c.spotifyTrackId = entry.spotifyTrackId || c.spotifyTrackId || null;
     c.previewUrl = entry.previewUrl || c.previewUrl || null;
     c.externalUrl = entry.externalUrl || c.externalUrl || null;
+    c.summary = entry.summary || c.summary || null;
     await idbPut('cards', c);
     updated++;
   }
   renderGallery();
-  alert('Updated ' + updated + ' card(s).' + (skipped ? ' ' + skipped + " couldn't be matched (their exact song/album/member no longer exists in the deck) and were left as-is." : ''));
+  alert('Updated ' + updated + ' card(s).' + (fellBack ? ' ' + fellBack + " had their original photo deleted, so a random remaining photo was used instead." : '') + (skipped ? ' ' + skipped + " couldn't be matched (their exact song/album/member no longer exists in the deck) and were left as-is." : ''));
 }
 function parseFirebaseConfig(text){
   let cleaned = text.trim();
@@ -1383,10 +1389,20 @@ async function ensureCardFont(){
   })();
   return fontReady;
 }
-function memberPhoto(member){
+function getMemberImgs(m){
+  if(!m) return [];
+  if(m.imgs && m.imgs.length){
+    if(typeof m.imgs[0] === 'string') return m.imgs.map((src,i) => ({id:'legacy_'+i, src}));
+    return m.imgs;
+  }
+  if(m.img) return [{id:'legacy', src:m.img}];
+  return [];
+}
+function memberPhoto(member, forcedId){
   if(!member) return null;
-  const pool = (member.imgs && member.imgs.length) ? member.imgs : (member.img ? [member.img] : []);
+  const pool = getMemberImgs(member);
   if(pool.length === 0) return null;
+  if(forcedId){ const found = pool.find(p=>p.id===forcedId); if(found) return found; }
   return pool[Math.floor(Math.random()*pool.length)];
 }
 function drawSparkle(ctx, x, y, size, color){
@@ -1400,7 +1416,7 @@ function drawSparkle(ctx, x, y, size, color){
   ctx.closePath(); ctx.fill();
   ctx.restore();
 }
-async function bakeArt(track, member, grade){
+async function bakeArt(track, member, grade, forcedPhotoId){
   await ensureCardFont();
   const W=340,H=476;
   const canvas = document.createElement('canvas'); canvas.width=W; canvas.height=H;
@@ -1443,11 +1459,11 @@ async function bakeArt(track, member, grade){
   ctx.fillStyle = plateGrad; ctx.fillRect(0,plateTop,W,H-plateTop);
 
   // member portrait — large, centered hero shot, glow/sparkle intensity scales continuously with grade
-  const photo = memberPhoto(member);
+  const photoObj = memberPhoto(member, forcedPhotoId);
   const cx = W/2, cy = H*0.29, r = 88;
-  if(photo){
+  if(photoObj){
     try{
-      const face = await loadImg(photo);
+      const face = await loadImg(photoObj.src);
       const glowR = r * (1.15 + gv.glowMult*0.3);
       const glow = ctx.createRadialGradient(cx,cy,r*0.8,cx,cy,glowR);
       glow.addColorStop(0, gColor + gv.ringAlpha);
@@ -1499,7 +1515,7 @@ async function bakeArt(track, member, grade){
   ctx.font='700 12px Poppins, Segoe UI, sans-serif'; ctx.fillStyle='rgba(255,255,255,0.78)';
   wrapTextCenter(ctx, track.album, W/2, H-12, W-50, 16);
   ctx.textAlign='left';
-  return canvas.toDataURL('image/png');
+  return { art: canvas.toDataURL('image/png'), photoId: photoObj ? photoObj.id : null };
 }
 function wrapTextCenter(ctx, text, cx, y, maxWidth, lineHeight){
   const words = text.split(' '); let line=''; const lines=[];
@@ -1655,11 +1671,12 @@ async function openPack(packId){
     // so the same song/member can come out as a C one pull and an R the next.
     const entry = activePool[Math.floor(Math.random()*activePool.length)];
     const deck = decks.find(d => d.deckId === entry.__deckId);
-    const member = (deck && deck.members.find(m => m.id === entry.memberId)) || {name: entry.memberName, img:null};
-    const art = await bakeArt({name:entry.track, album:entry.album, imageUrl:entry.trackImageUrl}, member, grade);
+    const baseMember = (deck && deck.members.find(m => m.id === entry.memberId)) || {name: entry.memberName, imgs:[]};
+    const member = Object.assign({}, baseMember, {name: entry.memberName || baseMember.name});
+    const baked = await bakeArt({name:entry.track, album:entry.album, imageUrl:entry.trackImageUrl}, member, grade);
     const card = {
       id:'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-      art, track: entry.track, album: entry.album, member: member.name,
+      art: baked.art, memberPhotoId: baked.photoId, track: entry.track, album: entry.album, member: member.name,
       spotifyTrackId: entry.spotifyTrackId || null,
       previewUrl: entry.previewUrl || null,
       externalUrl: entry.externalUrl || null,
