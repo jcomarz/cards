@@ -154,6 +154,13 @@
   .setMemberChip.missing{opacity:.28;filter:grayscale(1);}
   .setMemberChip .rcrown{position:absolute;top:-7px;right:-5px;font-size:13px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8));}
   .setProgress{font-size:11px;color:var(--dim);margin-top:8px;}
+  .leagueEntry{background:var(--ink2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,.2);}
+  .leagueEntry.complete{border-color:var(--r);box-shadow:0 0 18px rgba(245,196,81,.35);}
+  .leagueRank{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#06251f;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;font-size:14px;}
+  .leagueInfo{flex:1;min-width:0;}
+  .leagueName{font-weight:700;font-size:13px;}
+  .leagueMeta{font-size:11px;color:var(--dim);margin-top:2px;}
+  .leaguePoints{font-weight:800;font-size:16px;color:var(--r);flex:none;text-align:right;}
   .dcGrid{margin-top:14px;overflow-x:auto;}
   .dcRow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);}
   .dcRow.dcHeader{border-bottom:2px solid var(--line);padding-bottom:10px;}
@@ -472,6 +479,7 @@
     </div>
     <div style="flex:none;align-self:flex-end;">
       <button class="secondary" id="viewSetsBtn" type="button">🏆 View sets</button>
+      <button class="secondary" id="viewLeagueBtn" type="button">🏅 League score</button>
       <button class="danger" id="clearCollBtn" type="button">Clear collection</button>
     </div>
   </div>
@@ -494,6 +502,14 @@
     <span id="setsPageLabel" class="pageLabel"></span>
     <button class="secondary small" id="setsNextBtn" type="button">Next ›</button>
   </div>
+</div>
+
+<div class="panel" id="leaguePanel" style="display:none;">
+  <h2><span class="ic">🏅</span>League score — best 5 sets</h2>
+  <div class="status">Your 5 highest-scoring sets, added together. Grade and star level drive each card's points; a fully completed set gets a bonus multiplier on top. Sets with fewer than 2 slots don't count.</div>
+  <div class="revealTitle" id="leagueTotal" style="text-align:center;margin:14px 0;"></div>
+  <div id="leagueList"></div>
+  <div class="empty" id="leagueEmpty">Not enough qualifying sets yet — you need at least one set with 2+ slots and something owned in it.</div>
 </div>
 
 <div class="modal-bg" id="albumModalBg">
@@ -1716,6 +1732,97 @@ $('addRpBtn').addEventListener('click', async () => { rp += 1000; await setMeta(
 // ---------------- sets ----------------
 let setsPage = 0;
 const SETS_PAGE_SIZE = 6;
+// ---------------- league score ----------------
+const GRADE_POINTS = {C:10, B:25, A:60, S:150, R:400};
+function cardPoints(c){
+  const base = GRADE_POINTS[c.grade] || 0;
+  const starMult = 1 + (c.stars||0)*0.1;
+  const rLevelMult = (c.grade === 'R' && c.rLevel) ? (1 + c.rLevel*0.02) : 1;
+  return base * starMult * rLevelMult;
+}
+function enumerateAllSets(){
+  const out = [];
+  decks.filter(d => includedDeckIds.has(d.deckId)).forEach(deck => {
+    if(!deck.pool || deck.pool.length === 0) return;
+    const isMulti = deck.members.length > 1;
+    if(isMulti){
+      const bySong = {};
+      deck.pool.forEach(p => {
+        const key = p.track + '::' + p.album;
+        if(!bySong[key]) bySong[key] = {track:p.track, album:p.album, members:new Map()};
+        if(!bySong[key].members.has(p.memberId)) bySong[key].members.set(p.memberId, p.memberName);
+      });
+      Object.values(bySong).forEach(info => {
+        const memberEntries = Array.from(info.members.entries());
+        if(memberEntries.length < 2) return;
+        const slots = memberEntries.map(([mid,mname]) => {
+          const owned = cards.filter(c=>c.deckId===deck.deckId && c.track===info.track && c.album===info.album && c.member===mname);
+          const best = owned.length ? owned.reduce((a,b)=>gradeIdx(b.grade)>gradeIdx(a.grade)?b:a) : null;
+          return {filled: !!best, card: best};
+        });
+        out.push({deckName:deck.artistName, setName: info.track, slots});
+      });
+    } else {
+      const byAlbum = {};
+      deck.pool.forEach(p => { if(!byAlbum[p.album]) byAlbum[p.album] = new Set(); byAlbum[p.album].add(p.track); });
+      Object.entries(byAlbum).forEach(([albumName, trackSet]) => {
+        const trackList = Array.from(trackSet);
+        if(trackList.length < 2) return;
+        const slots = trackList.map(track => {
+          const owned = cards.filter(c=>c.deckId===deck.deckId && c.album===albumName && c.track===track);
+          const best = owned.length ? owned.reduce((a,b)=>gradeIdx(b.grade)>gradeIdx(a.grade)?b:a) : null;
+          return {filled: !!best, card: best};
+        });
+        out.push({deckName:deck.artistName, setName: albumName, slots});
+      });
+    }
+  });
+  return out;
+}
+function scoreSet(set){
+  let score = 0;
+  set.slots.forEach(s => { if(s.filled) score += cardPoints(s.card); });
+  const complete = set.slots.every(s => s.filled) && score > 0;
+  if(complete) score *= 1.5;
+  return {score: Math.round(score), complete};
+}
+function computeLeagueScore(){
+  const scored = enumerateAllSets()
+    .filter(s => s.slots.length >= 2)
+    .map(s => Object.assign({}, s, scoreSet(s)))
+    .filter(s => s.score > 0);
+  scored.sort((a,b) => b.score - a.score);
+  return scored.slice(0,5);
+}
+function renderLeague(){
+  const top5 = computeLeagueScore();
+  const total = top5.reduce((s,x)=>s+x.score,0);
+  $('leagueTotal').textContent = '🏅 ' + total.toLocaleString() + ' points';
+  const wrap = $('leagueList');
+  wrap.innerHTML = '';
+  $('leagueEmpty').style.display = top5.length ? 'none' : 'block';
+  top5.forEach((s,i) => {
+    const filled = s.slots.filter(x=>x.filled).length;
+    const el = document.createElement('div');
+    el.className = 'leagueEntry' + (s.complete ? ' complete' : '');
+    el.innerHTML = `
+      <div class="leagueRank">${i+1}</div>
+      <div class="leagueInfo">
+        <div class="leagueName">${escapeHtml(s.setName)} ${s.complete ? '👑' : ''}</div>
+        <div class="leagueMeta">${escapeHtml(s.deckName)} · ${filled}/${s.slots.length} filled${s.complete ? ' · 1.5× complete bonus' : ''}</div>
+      </div>
+      <div class="leaguePoints">${s.score.toLocaleString()}</div>
+    `;
+    wrap.appendChild(el);
+  });
+}
+$('viewLeagueBtn').addEventListener('click', () => {
+  const showing = $('leaguePanel').style.display !== 'none';
+  $('leaguePanel').style.display = showing ? 'none' : 'block';
+  $('viewLeagueBtn').textContent = showing ? '🏅 League score' : '🗂️ Back to cards';
+  if(!showing) renderLeague();
+});
+
 function renderSets(){
   const grid = $('setsGrid');
   grid.innerHTML = '';
@@ -1904,7 +2011,7 @@ function cardEl(c){
   div.className = 'card ' + c.grade.toLowerCase();
   div.innerHTML = `
     <img class="bg" src="${c.art}">
-    <div class="tag ${c.grade.toLowerCase()}">${c.grade}</div>
+    <div class="tag ${c.grade.toLowerCase()}">${c.grade}${c.rLevel ? '<br><span style="font-size:8px;">Lv.'+c.rLevel+'</span>' : ''}</div>
     <div class="starcol">${starPipsHtml(c.stars)}</div>
     <div class="deckchip">${escapeHtml(c.deckName||'')}</div>
     ${c.locked ? '<div class="lockBadge">🔒</div>' : ''}
@@ -1949,6 +2056,15 @@ function powerupSuccessChance(main, material){
   let chance = gap <= 0 ? 100 : Math.max(10, 100 - gap*25);
   chance = Math.min(100, chance + material.stars*5);
   return chance;
+}
+const RLEVEL_MAX = 99;
+function rLevelCost(c){
+  const lvl = c.rLevel || 0;
+  return Math.round(600 * (1 + lvl*0.18));
+}
+function rLevelChance(c){
+  const lvl = c.rLevel || 0;
+  return Math.max(5, Math.round(90 - lvl*0.85));
 }
 function buildSetProgressHtml(c){
   const deck = decks.find(d => d.deckId === c.deckId);
@@ -2012,6 +2128,10 @@ function openCardModal(cardId){
   const nextGrade = GRADES[GRADES.indexOf(c.grade)+1];
   const upgradeCost = UPGRADE_COST[c.grade] || 0;
   const puCost = powerupCost(c);
+  const canRLevel = c.grade === 'R' && c.stars >= 5 && (c.rLevel||0) < RLEVEL_MAX;
+  const rMats = canRLevel ? cards.filter(x => x.id!==c.id && x.deckId===c.deckId && x.member===c.member && x.grade==='R') : [];
+  const showRLevel = canRLevel && rMats.length > 0;
+  const rCost = canRLevel ? rLevelCost(c) : 0;
 
   // powerup: any OTHER, UNLOCKED card of this member (any grade) works as material
   const puMats = c.stars >= 5 ? [] : cards.filter(x => x.id!==c.id && x.deckId===c.deckId && x.member===c.member && !x.locked);
@@ -2033,10 +2153,10 @@ function openCardModal(cardId){
 
   body.innerHTML = `
     <h3>${escapeHtml(c.track)}</h3>
-    <div class="grademeta">${escapeHtml(c.member)} · ${escapeHtml(c.deckName||'')} · ${escapeHtml(c.album)} · <span style="color:${GRADE_COLOR[c.grade]}">${c.grade} grade</span> · ${c.stars}/5 ★</div>
+    <div class="grademeta">${escapeHtml(c.member)} · ${escapeHtml(c.deckName||'')} · ${escapeHtml(c.album)} · <span style="color:${GRADE_COLOR[c.grade]}">${c.grade}${c.rLevel ? ' Lv.'+c.rLevel : ''} grade</span> · ${c.stars}/5 ★</div>
     <div class="previewcard card ${c.grade.toLowerCase()}">
       <img class="bg" src="${c.art}">
-      <div class="tag ${c.grade.toLowerCase()}">${c.grade}</div>
+      <div class="tag ${c.grade.toLowerCase()}">${c.grade}${c.rLevel ? '<br><span style="font-size:9px;">Lv.'+c.rLevel+'</span>' : ''}</div>
       <div class="starcol">${starPipsHtml(c.stars)}</div>
       ${c.locked ? '<div class="lockBadge">🔒</div>' : ''}
     </div>
@@ -2074,6 +2194,17 @@ function openCardModal(cardId){
       <div class="status" id="upStatus">Pick a matching 5★ material card. Locked cards (🔒) can be used here, or unlocked directly from the tile.</div>
       <button id="upBtn" disabled style="width:100%;">Upgrade grade</button>
     </div>` : ''}
+
+    ${showRLevel ? `
+    <div class="section" id="rLevelSection">
+      <h4>Power up to R Lv.${(c.rLevel||0)+1} / 99 (needs another R ${escapeHtml(c.member)} card — cost ${rCost} RP)</h4>
+      <div class="status" style="margin-top:0;">Already maxed at 5★ — this pushes the R grade itself further. Gets harder every level.</div>
+      <div class="matlist" id="rMatList" style="margin-top:10px;"></div>
+      <div class="status" id="rStatus">Pick another R-grade card to fuel the attempt.</div>
+      <button class="secondary" id="rLevelBtn" disabled style="width:100%;">Attempt R Lv.${(c.rLevel||0)+1}</button>
+    </div>` : ''}
+    ${(canRLevel && !showRLevel) ? `<div class="status" style="text-align:center;margin-top:10px;">R Lv.${(c.rLevel||0)+1} needs another R-grade ${escapeHtml(c.member)} card — none available yet.</div>` : ''}
+    ${(c.grade==='R' && (c.rLevel||0) >= RLEVEL_MAX) ? `<div class="status" style="text-align:center;margin-top:10px;color:${GRADE_COLOR.R};">👑 Maxed at R Lv.99 — as far as this card goes.</div>` : ''}
 
     <div class="section">
       <h4>Sell</h4>
@@ -2217,6 +2348,46 @@ function openCardModal(cardId){
     openCardModal(c.id);
   });
   } // end showUpgrade
+
+  if(showRLevel){
+  let rSelected = null;
+  const rList = $('rMatList');
+  rList.innerHTML = '';
+  rMats.forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'matcard';
+    el.innerHTML = `<img src="${m.art}"><div class="mtag" style="color:${GRADE_COLOR.R}">R${m.stars}★${m.rLevel?' Lv.'+m.rLevel:''}</div>`;
+    el.addEventListener('click', () => {
+      rSelected = m.id;
+      rList.querySelectorAll('.matcard').forEach(x=>x.classList.remove('selected'));
+      el.classList.add('selected');
+      const chance = rLevelChance(c);
+      const affordable = rp >= rCost;
+      $('rStatus').textContent = 'Success chance: ' + chance + '% · costs ' + rCost + ' RP (you have ' + rp + '). Material and RP are spent either way.' + (affordable ? '' : ' Not enough RP.');
+      $('rLevelBtn').disabled = !affordable;
+    });
+    rList.appendChild(el);
+  });
+
+  $('rLevelBtn').addEventListener('click', async () => {
+    const material = cards.find(x=>x.id===rSelected);
+    if(!material || rp < rCost) return;
+    rp -= rCost; await setMeta('rp', rp); renderWallet();
+    const chance = rLevelChance(c);
+    const success = Math.random()*100 < chance;
+
+    await runMergeAnimation(c, material, 'Pushing ' + escapeHtml(c.member) + ' to R Lv.' + ((c.rLevel||0)+1) + '...');
+    cards = cards.filter(x=>x.id!==material.id);
+    await idbDel('cards', material.id);
+    if(success) c.rLevel = (c.rLevel||0) + 1;
+    await idbPut('cards', c);
+    if(success) SFX.upgradeSuccess(); else SFX.powerupFail();
+    showAnimResult(success, success ? '👑 R Lv.' + c.rLevel + '!' : '💔 Failed — material lost');
+    renderGallery();
+    await sleep(1100);
+    openCardModal(c.id);
+  });
+  } // end showRLevel
 
   $('sellBtn').addEventListener('click', async () => {
     if(!confirm('Sell this card for ' + sellValue(c) + ' RP?')) return;
