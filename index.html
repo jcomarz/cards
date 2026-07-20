@@ -2129,12 +2129,12 @@ function openCardModal(cardId){
   const upgradeCost = UPGRADE_COST[c.grade] || 0;
   const puCost = powerupCost(c);
   const canRLevel = c.grade === 'R' && c.stars >= 5 && (c.rLevel||0) < RLEVEL_MAX;
-  const rMats = canRLevel ? cards.filter(x => x.id!==c.id && x.deckId===c.deckId && x.member===c.member && x.grade==='R') : [];
+  const rMats = canRLevel ? cards.filter(x => x.id!==c.id && x.grade==='R' && !x.locked) : [];
   const showRLevel = canRLevel && rMats.length > 0;
   const rCost = canRLevel ? rLevelCost(c) : 0;
 
   // powerup: any OTHER, UNLOCKED card of this member (any grade) works as material
-  const puMats = c.stars >= 5 ? [] : cards.filter(x => x.id!==c.id && x.deckId===c.deckId && x.member===c.member && !x.locked);
+  const puMats = c.stars >= 5 ? [] : cards.filter(x => x.id!==c.id && !x.locked);
   // upgrade: needs a maxed 5★ card of the SAME grade and member — locked cards ARE allowed here on purpose
   const upMats = canUpgradeGrade ? cards.filter(x => x.id!==c.id && x.deckId===c.deckId && x.member===c.member && x.grade===c.grade && x.stars>=5) : [];
   const showPowerup = puMats.length > 0;
@@ -2146,7 +2146,7 @@ function openCardModal(cardId){
 
   let hintText = '';
   if(!showPowerup && !showUpgrade){
-    if(c.stars < 5) hintText = 'No unlocked other ' + escapeHtml(c.member) + ' cards to use as powerup material — pull, collect, or unlock one first.';
+    if(c.stars < 5) hintText = 'No unlocked cards in your collection to use as powerup material — pull or collect one first.';
     else if(canUpgradeGrade) hintText = 'Maxed at 5★ — needs another maxed 5★ ' + c.grade + ' ' + escapeHtml(c.member) + ' card to upgrade (locked cards are fine here). Keep collecting!';
     else hintText = 'Maxed out — this member is already at the top grade for this deck.';
   }
@@ -2169,7 +2169,7 @@ function openCardModal(cardId){
 
     ${showPowerup ? `
     <div class="section" id="powerupSection">
-      <h4>Power up (any unlocked ${escapeHtml(c.member)} card works as material — cost ${puCost} RP)</h4>
+      <h4>Power up (any unlocked card in your collection works as material — cost ${puCost} RP)</h4>
       <label style="margin-top:0;">Sort materials</label>
       <select id="puSort">
         <option value="recent">Most recent</option>
@@ -2197,13 +2197,13 @@ function openCardModal(cardId){
 
     ${showRLevel ? `
     <div class="section" id="rLevelSection">
-      <h4>Power up to R Lv.${(c.rLevel||0)+1} / 99 (needs another R ${escapeHtml(c.member)} card — cost ${rCost} RP)</h4>
+      <h4>Power up to R Lv.${(c.rLevel||0)+1} / 99 (needs any other unlocked R-grade card — cost ${rCost} RP)</h4>
       <div class="status" style="margin-top:0;">Already maxed at 5★ — this pushes the R grade itself further. Gets harder every level.</div>
       <div class="matlist" id="rMatList" style="margin-top:10px;"></div>
       <div class="status" id="rStatus">Pick another R-grade card to fuel the attempt.</div>
       <button class="secondary" id="rLevelBtn" disabled style="width:100%;">Attempt R Lv.${(c.rLevel||0)+1}</button>
     </div>` : ''}
-    ${(canRLevel && !showRLevel) ? `<div class="status" style="text-align:center;margin-top:10px;">R Lv.${(c.rLevel||0)+1} needs another R-grade ${escapeHtml(c.member)} card — none available yet.</div>` : ''}
+    ${(canRLevel && !showRLevel) ? `<div class="status" style="text-align:center;margin-top:10px;">R Lv.${(c.rLevel||0)+1} needs another unlocked R-grade card from anywhere in your collection — none available yet.</div>` : ''}
     ${(c.grade==='R' && (c.rLevel||0) >= RLEVEL_MAX) ? `<div class="status" style="text-align:center;margin-top:10px;color:${GRADE_COLOR.R};">👑 Maxed at R Lv.99 — as far as this card goes.</div>` : ''}
 
     <div class="section">
