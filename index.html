@@ -1960,7 +1960,7 @@ function renderGallery(){
   const gallery = $('gallery');
   const groupBy = $('collGroupBy').value;
   const sortMode = $('collSort').value;
-  const visible = cards.filter(c => includedDeckIds.has(c.deckId));
+  const visible = cards.filter(c => !includedDeckSeen.has(c.deckId) || includedDeckIds.has(c.deckId));
   gallery.innerHTML = '';
   $('collCount').textContent = visible.length + ' cards' + (visible.length===cards.length ? '' : ' (' + cards.length + ' total)');
   $('galleryEmpty').style.display = visible.length ? 'none' : 'block';
@@ -2420,12 +2420,10 @@ $('exportBtn').addEventListener('click', () => {
   $('ioStatus').textContent = 'Building export...';
   try{
     const parts = [];
-    parts.push('{"kind":"cardforge-collection","version":2,"exportedAt":' + JSON.stringify(new Date().toISOString()) + ',"rp":' + JSON.stringify(rp) + ',');
+    parts.push('{"kind":"cardforge-collection","version":3,"exportedAt":' + JSON.stringify(new Date().toISOString()) + ',"rp":' + JSON.stringify(rp) + ',');
     parts.push('"tasks":' + JSON.stringify(tasks) + ',');
     parts.push('"lists":' + JSON.stringify(lists) + ',');
-    parts.push('"decks":[');
-    decks.forEach((d,i) => parts.push((i>0?',':'') + JSON.stringify(d)));
-    parts.push('],"cards":[');
+    parts.push('"cards":[');
     cards.forEach((c,i) => parts.push((i>0?',':'') + JSON.stringify(c)));
     parts.push(']}');
     const blob = new Blob(parts, {type:'application/json'});
@@ -2433,7 +2431,7 @@ $('exportBtn').addEventListener('click', () => {
     a.href = URL.createObjectURL(blob);
     a.download = 'card-collection-export-' + new Date().toISOString().slice(0,10) + '.json';
     a.click();
-    $('ioStatus').textContent = 'Exported ' + decks.length + ' decks, ' + cards.length + ' cards, ' + lists.length + ' quest lists (' + (blob.size/1024/1024).toFixed(1) + ' MB).';
+    $('ioStatus').textContent = 'Exported ' + cards.length + ' cards, ' + lists.length + ' quest lists (' + (blob.size/1024/1024).toFixed(1) + ' MB). Decks aren\'t included — they\'re shared data, managed via Deck Builder or Browse Firebase decks, never through this backup.';
   }catch(e){ $('ioStatus').textContent = 'Export failed: ' + e.message; }
 });
 $('importBtn').addEventListener('click', () => $('importFile').click());
@@ -2452,17 +2450,21 @@ $('importFile').addEventListener('change', async e => {
     $('importFile').value = '';
     return;
   }
-  if(!confirm('Import will REPLACE your current decks, cards, tasks, quest lists, and RP. Continue?')) return;
-  await idbClear('decks'); await idbClear('cards'); await idbClear('tasks'); await idbClear('lists');
-  decks = payload.decks || []; cards = payload.cards || []; tasks = payload.tasks || []; lists = payload.lists || []; rp = payload.rp || 0;
-  for(const d of decks) await idbPut('decks', d);
+  if(!confirm('Import will REPLACE your current cards, tasks, and quest lists (RP included). Decks are never touched by this — continue?')) return;
+  // decks are DELIBERATELY excluded here and always were meant to be — this is what caused the
+  // shared Firestore decks collection to get wiped previously, since decks are shared cloud data,
+  // not part of a personal backup. idbClearLocal/idbPutLocal are used explicitly (not the cloud-routed
+  // idbClear/idbPut) so this import can never reach into Firestore's decks collection, regardless of
+  // sign-in state.
+  await idbClear('cards'); await idbClear('tasks'); await idbClear('lists');
+  cards = payload.cards || []; tasks = payload.tasks || []; lists = payload.lists || []; rp = payload.rp || 0;
   for(const c of cards) await idbPut('cards', c);
   for(const t of tasks) await idbPut('tasks', t);
   for(const l of lists) await idbPut('lists', l);
   await setMeta('rp', rp);
-  renderDecks(); renderDeckSelect(); renderCollFilter(); renderTasks(); renderLists(); renderGallery(); renderWallet();
+  renderTasks(); renderLists(); renderGallery(); renderWallet();
   $('importFile').value = '';
-  $('ioStatus').textContent = 'Import complete: ' + decks.length + ' decks, ' + cards.length + ' cards, ' + lists.length + ' quest lists.';
+  $('ioStatus').textContent = 'Import complete: ' + cards.length + ' cards, ' + lists.length + ' quest lists. Decks untouched — use Browse Firebase decks or Import deck file if you need those back.';
 });
 
 // ---------------- init ----------------
